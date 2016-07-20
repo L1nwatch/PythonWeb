@@ -38,5 +38,19 @@ if __name__ == "__main__":
 * 在这个浏览器中打开期望本地电脑伺服的网页
 * 检查（测试断言）这个网页的标题中是否包含单词 Django
 
+#### 个人实践
+
+实践时报了错误，其中一个：
+
+```Python
+'chromedriver' executable needs to be in PATH. Please see https://sites.google.com/a/chromium.org/chromedriver/home
+```
+
+想想是不是因为 Selenium 没配置好，自己试着配置一下：
+
+* [安装 Java JDK 环境](http://www.oracle.com/technetwork/java/javase/downloads)，这个好像是不需要的，或者说是因为我已经安装了 JRE 的缘故？
+* 安装 Selenium-Server：Homebrew 安装
+* [安装 chromedriver](https://sites.google.com/a/chromium.org/chromedriver/downloads)
+
 ### 1.2 让 Django 运行起来
 
