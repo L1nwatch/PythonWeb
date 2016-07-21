@@ -77,7 +77,7 @@ if __name__ == "__main__":
 再此替换为 Firefox 浏览器，步骤如下：
 
 * 安装 Firefox 浏览器
-* ​
+* 直接就可以使用 webdriver.Firefox() 来开启了
 
 ### 创建 Git 仓库
 
@@ -100,7 +100,30 @@ ls
 echo "db.sqlite3" >> .gitignore
 ```
 
+接下来，可以添加当前文件夹中的其他内容了：
 
+```shell
+git add .
+git status
+```
 
+会发现添加了很多 .pyc 文件，这些文件没必要提交。将其从 Git 中删掉，并添加到 .gitignore 中：
 
+```shell
+git rm -r --cached superlists/__pycache__
+echo "__pycache__" >> .gitignore
+echo "*.pyc" >> .gitignore
+```
+
+Git 别名：比如说可以把 git status 别名为 git st
+
+做第一次提交：
+
+```shell
+git commit
+```
+
+输入 git commit 后，会弹出一个编辑器窗口，让你输入提交信息。
+
+接下来还要学习如何把代码推送到云端的 VCS 托管服务中，例如 GitHub 或 BitBucket。
 

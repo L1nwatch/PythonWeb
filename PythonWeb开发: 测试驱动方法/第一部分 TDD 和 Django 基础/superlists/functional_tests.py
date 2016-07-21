@@ -9,6 +9,6 @@ from selenium import webdriver
 __author__ = '__L1n__w@tch'
 
 if __name__ == "__main__":
-    browser = webdriver.Safari()
+    browser = webdriver.Firefox()
     browser.get("http://localhost:8000")
     assert 'Django' in browser.title
