@@ -54,3 +54,53 @@ if __name__ == "__main__":
 
 ### 1.2 让 Django 运行起来
 
+使用 Django 的第一步是创建项目，网站就放在这个项目中。Django 为此提供了一个命令行工具：
+
+`$ django-admin.py startproject superlists`
+
+这个命令会创建一个名为 superlists 的文件夹，并在其中创建一些文件和子文件夹。
+
+在 superlists 文件夹中还有一个名为 superlists 的文件夹。回顾 Django 的历史，会找到出现这种结构的原因。现在，superlists/superlists 文件夹的作用是保存应用于整个项目的文件，例如 settings.py 的作用是存储网站的全局配置信息。
+
+还有 manage.py，这个文件作用之一是运行开发服务器。执行命令`cd superlists`，进入顶层文件夹 superlists，然后执行`python3 manage.py runserver`
+
+让这个命令一直运行着，再打开一个命令行窗口，在其中再次尝试运行测试`python3 functional_test.py`
+
+可以发现没有 AssertionError 以及 Selenium 弹出的浏览器窗口中显示的页面不一样了。
+
+如果想退出开发服务器，可以回到第一个 shell 中，按 Ctrl-C 键。
+
+#### 浏览器的问题
+
+发现 Selenium 库支持好几种浏览器，比如说 Chrome（需要下载 chromedriver）等，自己平常就是用 Chrome 查找资料的，所以如果开发的时候也用 Chrome 感觉不太方便。
+
+再此替换为 Firefox 浏览器，步骤如下：
+
+* 安装 Firefox 浏览器
+* ​
+
+### 创建 Git 仓库
+
+把作品提交到版本控制系统（Version Control System，VCS）。这里使用 Git 作为 VCS。
+
+先把 functional_tests.py 移到 superlists 文件夹。然后执行 git init 命令，创建仓库：
+
+```shell
+ls
+mv functional_test.py superlists/
+cd superlists
+git init .
+```
+
+接着，添加想提交的文件——其实所有文件都要提交：
+
+```shell
+ls
+# db.sqlite3 是数据库文件。不想把这个文件纳入版本控制，因此要将其添加到一个特殊的文件 .gitigonre 中，告诉 Git 将其忽略：
+echo "db.sqlite3" >> .gitignore
+```
+
+
+
+
+
