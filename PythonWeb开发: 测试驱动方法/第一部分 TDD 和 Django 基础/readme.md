@@ -337,3 +337,103 @@ git commit -a
 -a 的意思是：自动添加已跟踪文件（即已经提交的各文件）中的改动。上述命令不会添加全新的文件（需要自己使用`git add`命令手动添加这些文件）。
 
 弹出编辑器后，写入一个描述性的提交消息，比如“使用注释编写规格的首个功能测试，而且使用了 unittest”
+
+## 第 3 章 使用单元测试测试简单的首页
+
+### 3.1 第一个 Django 应用，第一个单元测试
+
+Django 鼓励以”应用“的形式组织代码，一个项目中可以放多个应用，而且可以使用其他人开发的第三方应用，也可以重用自己在其他项目中开发的应用。
+
+为待办事项清单创建一个应用`python3 manage.py startapp lists`
+
+这个命令会在 superlists 文件夹中创建子文件夹 lists，与 superlists 子文件夹相邻，并在 lists 中创建一些占位文件，用来保存模型、视图以及目前最关注的测试：
+
+> superlists/
+>
+> > db.sqlite3
+> >
+> > functional_tests.py
+> >
+> > lists
+> >
+> > > admin.py
+> > >
+> > > \_\_init\_\_.py
+> > >
+> > > migrations
+> > >
+> > > > \_\_init\_\_.py
+> > >
+> > > models.py
+> > >
+> > > tests.py
+> > >
+> > > views.py
+> >
+> > manage.py
+> >
+> > superlists
+> >
+> > > \_\_init\_\_.py
+> > >
+> > > \_\_pycache\_\_
+> > >
+> > > settings.py
+> > >
+> > > urls.py
+> > >
+> > > wsgi.py
+
+### 3.2 单元测试及其与功能测试的区别
+
+单元测试和功能测试之间有个基本区别：功能测试站在用户的角度从外部测试应用，单元测试则站在程序员的角度从内部测试应用。
+
+作者遵从的 TDD 方法同时使用这两种类型测试应用。采用的工作流程大致如下：
+
+1. 先写功能测试，从用户的角度描述应用的新功能。
+2. 功能测试失败后，想办法编写代码让它通过。此时，使用一个或多个单元测试定义希望代码实现的效果，保证为应用中的每一行代码（至少）编写一个单元测试。
+3. 单元测试失败后，编写最小量的应用代码，刚好让单元测试通过。 不断循环第 2 步和第 3 步，直到功能测试有一点进展为止。
+4. 然后，再次运行功能测试，看能否通过，或者有没有进展。这一步可能促使我们编写一些新的单元测试和代码等。
+
+功能测试站在高层驱动开发，而单元测试则从底层驱动。
+
+> 功能测试的作用是帮助你开发具有所需功能的应用，还能保证你不会无意中破话这些功能。单元测试的作用是帮助你编写简洁无错的代码。
+
+### 3.3 Django 中的单元测试
+
+为首页视图编写单元测试，打开新生成的文件 lists/tests.py，可以看到
+
+```Python
+from django.test import TestCase
+
+# Create your tests here.
+```
+
+Django 建议我们使用 TestCase 的一个特殊版本。这个版本由 Django 提供，是标准版 unittest.TestCase 的增强版，添加了一些 Django 专用的功能。
+
+先故意编写一个失败的测试：
+
+```Python
+from django.test import TestCase
+
+__author__ = '__L1n__w@tch'
+
+
+class SmokeTest(TestCase):
+    def test_bad_maths(self):
+        self.assertEqual(1 + 1, 3)
+```
+
+现在，启动 Django 测试运行程序，命令`python3 manage.py test`
+
+能运行单元测试，则可以提交了：
+
+```shell
+git status # 会显示一个消息，说没跟踪 lists/
+git add lists
+git diff --staged # 会显示将要提交的内容差异
+git commit -m "Add app for lists, with deliberately failing unit test"
+```
+
+-m 标志的作用是让你在命令行中编写提交消息，这样就不需要使用编辑器了。
+
