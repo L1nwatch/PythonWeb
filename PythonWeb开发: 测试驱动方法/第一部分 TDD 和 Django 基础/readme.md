@@ -437,3 +437,55 @@ git commit -m "Add app for lists, with deliberately failing unit test"
 
 -m 标志的作用是让你在命令行中编写提交消息，这样就不需要使用编辑器了。
 
+### 3.4 Django 中的 MVC、URL 和视图函数
+
+Django 遵守了经典的 ”模型-视图-控制器“（Model-View-Controller，MVC）模式，但并没严格遵守。Django 确实有模型，但视图更像是控制器，模板其实才是视图。不过，MVC 的思想还在。可以看下 [Django 常见问题解答中的详细说明](https://docs.djangoproject.com/en/1.7/faq/general/)。
+
+Django 和任何一种 Web 服务器一样，其主要任务是决定用户访问网站中的某个 URL 时做些什么。Django 的工作流程有点类似下述过程：
+
+1. 针对某个 URL 的 HTTP 请求进入
+2. Django 使用一些规则决定由哪个视图函数处理这个请求（这一步叫做解析 URL）
+3. 选中的视图函数处理请求，然后返回 HTTP 响应。
+
+因此要测试两件事：
+
+* 能否解析网站根路径（”/"）的 URL，将其对应到我们编写的某个视图函数上
+* 能否让视图函数返回一些 HTML，让功能测试通过？
+
+先编写第一个测试，打开 lists/tests.py，更改代码：
+
+```python
+from django.core.urlresolvers import resolve
+from django.test import TestCase
+from lists.views import home_page  # 这是接下来要定义的视图函数，其作用是返回所需的 HTML。要把这个函数保存在文件 lists/views.py
+
+__author__ = '__L1n__w@tch'
+
+
+class HomePageTest(TestCase):
+    def test_root_url_resolves_to_home_page_view(self):
+        found = resolve("/")  # resolve 是 Django 内部使用的函数，用于解析 URL，并将其映射到对应的视图函数上。
+        self.assertEqual(found.func, home_page)  # 检查解析网站根路径"/"时，是否能找到名为 home_page 的函数
+```
+
+运行测试`python3 manage.py test`，结果出现了 ImportError 错误，我们视图导入还未定义的函数。
+
+### 3.5 终于可以编写一些应用代码了
+
+在学习和起步阶段，一次只能修改（或添加）一行代码。每一次修改的代码要尽量少，让失败的测试通过即可。
+
+在 lists/views.py 中写入下面的代码：
+
+```python
+from django.shortcus import render
+
+# 在这儿编写视图
+home_page = None
+```
+
+再次运行测试`python3 manage.py test`会报另一个 Resolver404 错误。
+
+> 阅读调用跟踪
+>
+> 在 TDD 中
+
