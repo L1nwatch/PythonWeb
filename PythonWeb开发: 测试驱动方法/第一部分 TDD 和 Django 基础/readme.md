@@ -561,5 +561,117 @@ git commit -am "First unit test and url mapping, dummy view"
 
 ### 3.7 为视图编写单元测试
 
+该为视图编写测试了。我们要定义一个函数，向浏览器返回真正的 HTML 响应。打开 lists/tests.py，添加一个新测试方法。
 
+```python
+from django.core.urlresolvers import resolve
+from django.test import TestCase
+from django.http import HttpRequest
+
+from lists.views import home_page  # 这是接下来要定义的视图函数，其作用是返回所需的 HTML。要把这个函数保存在文件 lists/views.py
+
+__author__ = '__L1n__w@tch'
+
+
+class HomePageTest(TestCase):
+    def test_root_url_resolves_to_home_page_view(self):
+        found = resolve("/")  # resolve 是 Django 内部使用的函数，用于解析 URL，并将其映射到对应的视图函数上。
+        self.assertEqual(found.func, home_page)  # 检查解析网站根路径"/"时，是否能找到名为 home_page 的函数
+
+    def test_home_page_returns_correct_html(self):
+        request = HttpRequest()  # 创建了一个 HttpRequest 对象，用户在浏览器中请求网页时，Django 看到的就是 HttpRequest 对象。
+
+        response = home_page(request)  # 把这个 HttpRequest 对象传给 home_page 视图，得到响应。
+
+        # 判定响应的 .content 属性(即发送给用户的 HTML)中有特定的内容，希望响应以<html> 标签开头。
+        # 注意，response.content 是原始字节，不是 Python 字符串。更多信息参见 Django 文档中"移植到 Python 3"部分，
+        # [地址](https://docs.djangoproject.com/en/1.7/topics/python3/)
+        self.assertTrue(response.content.startswith(b"<html>"))
+
+        # 希望响应中有一个 <title> 标签，其内容包含单词 "To-Do"——因为在功能测试中做了这项测试
+        self.assertIn(b"<title>To-Do lists</title>", response.content)
+
+        # 希望响应在结尾处关闭 <html> 标签。
+        self.assertTrue(response.content.endswith(b"</html>"))
+```
+
+运行单元测试，看看进展如何。
+
+#### “单元测试/编写代码”循环
+
+现在可以开始适应 TDD 中的“单元测试/编写代码”循环了：
+
+1. 在终端里运行单元测试，看它们是如何失败的
+2. 在编辑器中改动最少量的代码，让当前失败的测试通过
+3. 不断重复
+
+想保证编写的代码无误，每次改动的幅度就要尽量小。这样才能确保每一部分代码都有对应的测试监护。
+
+* 小幅代码改动：
+
+  ```python
+  def home_page(request):
+      pass
+  ```
+
+* 运行测试
+
+* 测试出错，使用 django.http.HttpResponse：
+
+  ```python
+  def home_page(request):
+      return HttpResponse()
+  ```
+
+* 再次运行测试
+
+* 测试出错，AssertionError。
+
+* 再次编写代码：
+
+  ```python
+  def home_page(request):
+      return HttpResponse("<html><title>To-Do lists</title></html>")
+  ```
+
+* 进行测试`python manage.py test`发现测试通过了。接下来要运行功能测试。
+
+* `python functional_tests.py`，功能测试失败了（卡在了自己的一个提醒那里），现在要做一次提交了：
+
+  ```shell
+  git diff # 会显示 tests.py 中的新测试方法，以及 views.py 中的视图
+  git commit -am "Basic view now returns minimal HTML"
+  git log --online
+  ```
+
+  `git log`命令回顾了我们取得的进展。
+
+本章介绍了以下知识：
+
+* 新建 Django 应用
+* Django 的单元测试运行程序
+* 功能测试和单元测试之间的区别
+* Django 解析 URL 的方法，urls.py 文件的作用
+* Django 的视图函数，请求和响应对象
+* 如何返回简单的 HTML
+
+> 有用的命令和概念
+>
+> * 启动 Django 的开发服务器
+>
+>   python manage.py runserver
+>
+> * 运行功能测试
+>
+>   python functional_tests.py
+>
+> * 运行单元测试
+>
+>   python manage.py test
+>
+> * "单元测试/编写代码" 循环
+>
+>   1. 在终端里运行单元测试
+>   2. 在编辑器中改动最少量的代码
+>   3. 重复上两步
 
