@@ -1,3 +1,6 @@
+#!/bin/env python3
+# -*- coding: utf-8 -*-
+# version: Python3.X
 """todo_app URL Configuration
 
 The `urlpatterns` list routes URLs to views. For more information please see:
@@ -16,6 +19,9 @@ Including another URLconf
 from django.conf.urls import url
 from django.contrib import admin
 
+__author__ = '__L1n__w@tch'
+
 urlpatterns = [
-    url(r'^admin/', admin.site.urls),
+    # url(r'^admin/', admin.site.urls),
+    url(r"^$", "lists.views.home_page", name="home")
 ]

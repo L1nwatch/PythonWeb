@@ -8,8 +8,11 @@ from django.shortcuts import render
 
 __author__ = '__L1n__w@tch'
 
+
 # Create your views here.
-home_page = None
+def home_page():
+    pass
+
 
 if __name__ == "__main__":
     pass

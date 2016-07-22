@@ -487,5 +487,79 @@ home_page = None
 
 > 阅读调用跟踪
 >
-> 在 TDD 中
+> 在 TDD 中经常需要阅读调用跟踪，找出解决问题的线索。
+
+### 3.6 urls.py
+
+Django 在 urls.py 文件中定义如何把 URL 映射到视图函数上。在文件夹 superlists/superlists 中有个主 urls.py 文件，这个文件应用于整个网站。看下默认的内容：
+
+```Python
+from django.conf.urls import patterns, include, url
+from django.contrib import admin
+
+urlpatterns = patterns("",
+                       # Examples:
+                       # url(r"^$","superlists.views.home",name="home")),
+                       # url(r"^blog/",include("blog.urls")),
+                       url(r"^admin/", include(admin.site.urls)),
+                       )
+```
+
+这个文件中也有很多 Django 生成的辅助注释和默认建议。
+
+url 条目的前半部分是正则表达式，定义适用于哪些 URL。后半部分说明把请求发往何处：使用点号表示的函数，例如 superlists.views.home，或者使用 include 引入的另一个 urls.py 文件。
+
+可以看到，默认情况下有一个用于后台的条目。
+
+urlpatterns 中第一个条目使用的正则表达式是 ^&，表示空字符串。这和网站的根路径，即我们要测试的“/”一样。
+
+可以试着在这个文件里添加这么一句话：
+
+```Python
+from django.conf.urls import url
+from django.contrib import admin
+
+urlpatterns = [
+    url(r"^$", "todo_app.views.home", name="home")
+]
+```
+
+接着执行测试`python manage.py test`，可以发现不再显示 404 错误了。现在 Django 抱怨点号形式的 todo_app.views.home 指向的视图不存在。
+
+修正这个问题，让它指向占位用的 home_page 对象。这个对象不在 superlists 中，而在 lists 中。
+
+```python
+from django.conf.urls import url
+
+__author__ = '__L1n__w@tch'
+
+urlpatterns = [
+    # url(r'^admin/', admin.site.urls),
+    url(r"^$", "lists.views.home_page", name="home")
+]
+```
+
+然后再次运行测试，可以发现单元测试把地址 "/" 和文件 lists/views.py 中的 home_page = None 连接起来了，现在测试抱怨 home_page 无法调用，即不是函数。调整一下，把 home_page 从 None 变成真正的函数。
+
+回到文件 lists/views.py，把内容改成：
+
+```python
+def home_page():
+    pass
+```
+
+测试通过了。提交：
+
+```shell
+git diff # 会显示 urls.py、tests.py 和 views.py 中的变动
+git commit -am "First unit test and url mapping, dummy view"
+```
+
+把 a 和 m 标志放在一起使用，意思是添加所有已跟踪文件中的改动，而且使用命令行中输入的提交信息。
+
+> git commit -am 是最快捷的方式，但关于提交内容的反馈信息最少，所以在此之前要先执行 git status 和 git diff
+
+### 3.7 为视图编写单元测试
+
+
 
