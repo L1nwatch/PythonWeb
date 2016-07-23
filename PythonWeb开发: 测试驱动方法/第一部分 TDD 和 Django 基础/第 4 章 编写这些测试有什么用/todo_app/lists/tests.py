@@ -7,7 +7,7 @@
 from django.core.urlresolvers import resolve
 from django.test import TestCase
 from django.http import HttpRequest
-
+from django.template.loader import render_to_string
 from lists.views import home_page  # 这是接下来要定义的视图函数，其作用是返回所需的 HTML。要把这个函数保存在文件 lists/views.py
 
 __author__ = '__L1n__w@tch'
@@ -23,13 +23,5 @@ class HomePageTest(TestCase):
 
         response = home_page(request)  # 把这个 HttpRequest 对象传给 home_page 视图，得到响应。
 
-        # 判定响应的 .content 属性(即发送给用户的 HTML)中有特定的内容，希望响应以<html> 标签开头。
-        # 注意，response.content 是原始字节，不是 Python 字符串。更多信息参见 Django 文档中"移植到 Python 3"部分，
-        # [地址](https://docs.djangoproject.com/en/1.7/topics/python3/)
-        self.assertTrue(response.content.startswith(b"<html>"))
-
-        # 希望响应中有一个 <title> 标签，其内容包含单词 "To-Do"——因为在功能测试中做了这项测试
-        self.assertIn(b"<title>To-Do lists</title>", response.content)
-
-        # 希望响应在结尾处关闭 <html> 标签。
-        self.assertTrue(response.content.endswith(b"</html>"))
+        excepted_html = render_to_string("home.html")
+        self.assertEqual(response.content.decode("utf8"), excepted_html)

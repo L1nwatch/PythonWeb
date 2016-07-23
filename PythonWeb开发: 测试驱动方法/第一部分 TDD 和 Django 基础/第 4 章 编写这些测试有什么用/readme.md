@@ -129,5 +129,92 @@ git diff # 会显示对 functional_tests.py 的改动
 git commit -am "Functional test now checks we can input a to-do item"
 ```
 
+### 遵守“不测试常量”规则，使用模板解决这个问题
 
+看一下 lists/tests.py 中的单元测试。现在，要查找特定的 HTML 字符串，但这不是测试 HTML 的高效方法。一般来说，**单元测试的规则之一是“不测试常量”**。以文本形式测试 HTML 很大程度上就是测试常量。
 
+换句话说，如果有如下的代码：
+
+```python
+wibble = 3
+```
+
+在测试中就不太有必要这么写：
+
+```python
+from my_program import wibble
+assert wibble == 3
+```
+
+单元测试要测试的其实是逻辑、流程控制和配置。编写断言检测 HTML 字符串中是否有指定的字符序列，不是单元测试应该做的。
+
+而且，在 Python 代码中插入原始字符串真的不是处理 HTML 的正确方式。我们有更好的方法，那就是使用模板。如果把 HTML 放在一个扩展名为 .html 的文件中，有很多好处，比如句法高亮支持等。Python 领域有很多模板框架，Django 有自己的模板系统，而且很好用。
+
+### 使用模板重构
+
+现在要做的是让视图函数返回完全一样的 HTML，但使用不同的处理方式。这个过程叫做重构，即在功能不变的前提下改进代码。
+
+重构可参考 Martin Fowler 写的[《重构》](http://refactoring.com/)
+
+重构的首要原则是不能没有测试，我们正在做测试驱动开发，测试已经有了。测试能通过才能保证重构前后的表现一致： ``python manage.py test``
+
+测试通过后，先把 HTML 字符串提取出来写入单独的文件。新建用于保存模板的文件夹 lists/templates，然后新建文件 lists/templates/home.html，再把 HTML 写入这个文件。
+
+```html
+<html>
+  <title>To-Do lists</title>
+</html>
+```
+
+有些人喜欢使用和应用同名的子文件夹（即 lists/templates/lists），然后使用 lists/home.html 引用这个模板，这叫做“模板命名空间”。对于小型项目来说使用模板命名空间太复杂了，不过在大型项目中可能有用武之地，参见 [Django 教程](https://docs.djangoproject.com/en/1.7/intro/tutorial03/#write- views-that-actually-do-something)
+
+接下来修改视图函数：
+
+```python
+from django.shortcuts import render
+
+def home_page(request):
+    return render(request, "home.html")
+```
+
+现在不自己构建 HttpResponse 对象了，转而使用 Django 中的 render 函数。这个函数的第一个参数是请求对象的，第二个参数是渲染的模板名。Django 会自动在所有的应用目录中搜索名为 templates 的文件夹，然后根据模板中的内容构建一个 HttpResponse 对象。
+
+> 模板是 Django 中一个很强大的功能，使用模板的主要优势之一是能把 Python 变量代入 HTML 文本。这就是为什么使用 render 和 render_to_string，而不用原生的 open 函数手动从硬盘中读取模板文件的缘故。
+
+看一下模板是否起作用了 ``python manage.py test``
+
+发现错误，测试无法找到模板，分析调用跟踪可知是调用 render 函数那段出错了。Django 找不到模板，是因为还没有正式在 Django 中注册 lists 应用。执行 startapp 命令以及在项目文件夹中存放一个应用还不够，你要告诉 Django 确实要开发一个应用，并把这个应用添加到文件 settings.py 中。这么做才能保证万无一失。打开 settings.py，找到变量 INSTALLED_APPS，把 lists 加进去：
+
+```python
+# Application definition
+
+INSTALLED_APPS = [
+    'django.contrib.admin',
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.messages',
+    'django.contrib.staticfiles',
+    "lists"
+]
+```
+
+可以看出，默认已经有很多应用了。只需把 lists 加到列表的末尾。现在可以再运行测试看看 ``python manage.py test``
+
+> 作者在 ``self.aseertTrue(response.content.endswith(b"</html>"))``出错了，原因是创建 HTML 文件时编辑器自动给末尾加了一个换行
+
+自己的测试是通过的，所以对代码的重构结束了，测试也证实了重构前后的表现一致。现在可以修改测试，不再测试常量，检查是否渲染了正确的模板。Django 中的另一个辅助函数 ``render_to_string`` 可以给些帮助，在 lists/tests.py 文件中进行相应修改：
+
+```python
+from django.template.loader import render_to_string
+
+def test_home_page_returns_correct_html(self):
+    request = HttpRequest()
+    response = home_page(request)
+    expected_html = render_to_string("home.html")
+    self.assertEqual(response.content.decode(), expected_html)
+```
+
+使用 .decode() 把 response.content 中的字节转换成 Python 中的 Unicode 字符串，这样就可以对比字符串，而不用像之前那样对比字节。
+
+> 
