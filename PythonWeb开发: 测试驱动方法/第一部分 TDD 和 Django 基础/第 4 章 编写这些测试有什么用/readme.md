@@ -290,13 +290,13 @@ TDD 流程中涉及的主要概念：
 
 TDD 的总体流程，参照下图
 
-![TDD 的总体流程](https://github.com/L1nwatch/PythonWeb/blob/master/PythonWeb%E5%BC%80%E5%8F%91:%20%E6%B5%8B%E8%AF%95%E9%A9%B1%E5%8A%A8%E6%96%B9%E6%B3%95/%E7%AC%AC%E4%B8%80%E9%83%A8%E5%88%86%20TDD%20%E5%92%8C%20Django%20%E5%9F%BA%E7%A1%80/%E7%AC%AC%204%20%E7%AB%A0%20%E7%BC%96%E5%86%99%E8%BF%99%E4%BA%9B%E6%B5%8B%E8%AF%95%E6%9C%89%E4%BB%80%E4%B9%88%E7%94%A8/pic_4-3.png) 
+![TDD 的总体流程](https://github.com/L1nwatch/PythonWeb/blob/master/PythonWeb%E5%BC%80%E5%8F%91:%20%E6%B5%8B%E8%AF%95%E9%A9%B1%E5%8A%A8%E6%96%B9%E6%B3%95/%E7%AC%AC%E4%B8%80%E9%83%A8%E5%88%86%20TDD%20%E5%92%8C%20Django%20%E5%9F%BA%E7%A1%80/%E7%AC%AC%204%20%E7%AB%A0%20%E7%BC%96%E5%86%99%E8%BF%99%E4%BA%9B%E6%B5%8B%E8%AF%95%E6%9C%89%E4%BB%80%E4%B9%88%E7%94%A8/pic_4-3.png?raw=true) 
 
 首先编写一个测试，运行这个测试看着它失败。最后编写最少量的代码取得一些进展，再运行测试。如果不断重复，直到测试通过为止。最后，或许还要重构代码，测试能确保不破坏任何功能。
 
 包含功能测试和单元测试的 TDD 流程，如下图所示
 
-![功能测试 + 单元测试的 TDD 流程](https://github.com/L1nwatch/PythonWeb/blob/master/PythonWeb%E5%BC%80%E5%8F%91%3A%20%E6%B5%8B%E8%AF%95%E9%A9%B1%E5%8A%A8%E6%96%B9%E6%B3%95/%E7%AC%AC%E4%B8%80%E9%83%A8%E5%88%86%20TDD%20%E5%92%8C%20Django%20%E5%9F%BA%E7%A1%80/%E7%AC%AC%204%20%E7%AB%A0%20%E7%BC%96%E5%86%99%E8%BF%99%E4%BA%9B%E6%B5%8B%E8%AF%95%E6%9C%89%E4%BB%80%E4%B9%88%E7%94%A8/pic_4-4.png)
+![功能测试 + 单元测试的 TDD 流程](https://github.com/L1nwatch/PythonWeb/blob/master/PythonWeb%E5%BC%80%E5%8F%91:%20%E6%B5%8B%E8%AF%95%E9%A9%B1%E5%8A%A8%E6%96%B9%E6%B3%95/%E7%AC%AC%E4%B8%80%E9%83%A8%E5%88%86%20TDD%20%E5%92%8C%20Django%20%E5%9F%BA%E7%A1%80/%E7%AC%AC%204%20%E7%AB%A0%20%E7%BC%96%E5%86%99%E8%BF%99%E4%BA%9B%E6%B5%8B%E8%AF%95%E6%9C%89%E4%BB%80%E4%B9%88%E7%94%A8/pic_4-4.png?raw=true)
 
 功能测试是应用是否能正常运行的最终判定。单元测试只是整个开发过程中的一个辅助工具。
 
@@ -315,4 +315,3 @@ TDD 的总体流程，参照下图
 > ``git diff harry/chapter_04``
 >
 > Git 能处理多个远程仓库，因此就算已经把自己的代码推送到 GitHub 或者 Bitbucket，也可以这么做。
-
