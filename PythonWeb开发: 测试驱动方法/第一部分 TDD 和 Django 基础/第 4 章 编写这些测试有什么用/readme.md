@@ -217,4 +217,101 @@ def test_home_page_returns_correct_html(self):
 
 使用 .decode() 把 response.content 中的字节转换成 Python 中的 Unicode 字符串，这样就可以对比字符串，而不用像之前那样对比字节。
 
-> 
+> Django 提供了一个测试客户端，其中有用于测试模板的工具。
+
+### 4.4 关于重构
+
+> 重构时，修改代码或者测试，但不能同时修改。
+
+重构后最好做一次提交：
+
+```shell
+git status # 会看到 tests.py, views.py, settings.py, 以及新建的 templates 文件夹
+git add . # 还会添加尚未跟踪的 templates 文件夹
+git diff --staged # 审查我们想提交的内容
+git commit -m "Refactor home page view to use a template"
+```
+
+### 4.5 接着修改首页
+
+现在功能测试还是失败的。修改代码，让它通过。因为 HTML 现在保存在模板中，可以尽情修改，无需编写额外的单元测试。我们需要一个 ``<h1>`` 元素：
+
+```html
+<html>
+  <head>
+    <title>To-Do lists</title>
+  </head>
+  <body>
+    <h1>
+      Your To-Do list
+    </h1>
+    <input id="id_new_item" placeholder="Enter a to-do item"/>
+  </body>
+</html>
+```
+
+``placeholder`` 为占位文字
+
+得到了错误，找到表格，因此要在页面中加入表格。目前表格是空的：
+
+```html
+<input id="id_new_item" placeholder="Enter a to-do item" />
+<table id="id_list_table">
+  
+</table>
+```
+
+功能测试的结果依旧是错误，准确地说是 assertTrue，因为没有给它提供明确的失败消息。可以把自定义的错误消息传给 unittest 中的大多数 assertX 方法：
+
+```python
+self.assertTrue(
+	any(row.text == "1: Buy pen" for row in rows),
+    "New to-do item did not appear in table"
+)
+```
+
+再次运行功能测试，应该会看到我们编写的消息。
+
+现在做个提交吧：
+
+```shell
+git diff
+git commit -am "Front page HTML now generated from a template"
+```
+
+### 4.6 总结：TDD 流程
+
+TDD 流程中涉及的主要概念：
+
+* 功能测试
+* 单元测试
+* “单元测试/编写代码”循环
+* 重构
+
+TDD 的总体流程，参照下图
+
+![TDD 的总体流程]() 
+
+首先编写一个测试，运行这个测试看着它失败。最后编写最少量的代码取得一些进展，再运行测试。如果不断重复，直到测试通过为止。最后，或许还要重构代码，测试能确保不破坏任何功能。
+
+包含功能测试和单元测试的 TDD 流程，如下图所示
+
+![功能测试 + 单元测试的 TDD 流程]()
+
+功能测试是应用是否能正常运行的最终判定。单元测试只是整个开发过程中的一个辅助工具。
+
+这种看待事物的方式有时叫做“双循环测试驱动开发”。Emily Bache 写了一篇博客文章，从不同的视角讨论了这个话题，[参考链接](http:// coding-is-like-cooking.info/2013/04/outside-in-development-with-double-loop-tdd/)
+
+> 使用 Git 检查进度
+>
+> 如果想进一步提升 Git 技能，可以添加作者的仓库，作为一个远程仓库：
+>
+> ``git remote add harry https://github.com/hjwp/book-example.git``
+>
+> ``git fetch harry``
+>
+> 然后可以按照下面的方式查看第 4 章结束时代码之间的差异：
+>
+> ``git diff harry/chapter_04``
+>
+> Git 能处理多个远程仓库，因此就算已经把自己的代码推送到 GitHub 或者 Bitbucket，也可以这么做。
