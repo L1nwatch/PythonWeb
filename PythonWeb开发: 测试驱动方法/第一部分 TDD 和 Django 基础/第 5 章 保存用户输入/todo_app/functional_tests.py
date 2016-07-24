@@ -31,6 +31,20 @@ class NewVisitorTest(unittest.TestCase):
         # 她很满意, 去睡觉了
         self.browser.quit()
 
+    def check_for_low_in_list_table(self, row_text):
+        """
+        测试给定字符串是否在表格中
+        :param row_text: 需要判断的字符串
+        :return: None
+        """
+        table = self.browser.find_element_by_id("id_list_table")
+        rows = table.find_elements_by_tag_name("tr")
+        # self.assertTrue(
+        #     any(row.text == row_text for row in rows),
+        #     "New to-do item did not appear in table -- its text was:\n{}".format(table.text)
+        # )
+        self.assertIn(row_text, [row.text for row in rows])  # 这句话与上面那句等价, 不过精简了很多
+
     def test_can_start_a_list_and_retrieve_it_later(self):
         """
         测试的主要代码写在名为 test_can_start_a_list_and_retrieve_it_later 的方法中。
@@ -65,14 +79,7 @@ class NewVisitorTest(unittest.TestCase):
         # Y 按下回车键后, 页面更新了
         # 待办事项表格中显示了 "1: Buy pen"
         input_box.send_keys(Keys.ENTER)
-
-        table = self.browser.find_element_by_id("id_list_table")
-        rows = table.find_elements_by_tag_name("tr")
-        self.assertTrue(
-            any(row.text == "1: Buy pen" for row in rows),
-            "New to-do item did not appear in table -- its text was:\n{}".format(table.text)
-        )
-        self.assertIn("1: Buy pen", [row.text for row in rows])  # 这句话与上面那句等价, 不过精简了很多
+        self.check_for_low_in_list_table("1: Buy pen")
 
         # 页面中又显示了一个文本框, 可以输入其他的待办事项
         # Y 输入了 Use pen to take notes
@@ -82,10 +89,8 @@ class NewVisitorTest(unittest.TestCase):
         input_box.send_keys(Keys.ENTER)
 
         # 页面再次更新, 她的清单中显示了这两个待办事项
-        table = self.browser.find_element_by_id("id_list_table")
-        rows = table.find_elements_by_tag_name("tr")
-        self.assertIn("1: Buy pen", [row.text for row in rows])
-        self.assertIn("2: Use pen to take notes", [row.text for row in rows])
+        self.check_for_low_in_list_table("1: Buy pen")
+        self.check_for_low_in_list_table("2: Use pen to take notes")
 
         # Y 想知道这个网站是否会记住她的清单
         self.fail("Finish the test!")  # 不管怎样, self.fail 都会失败, 生成指定的错误消息。我使用这个方法提醒测试结束了。

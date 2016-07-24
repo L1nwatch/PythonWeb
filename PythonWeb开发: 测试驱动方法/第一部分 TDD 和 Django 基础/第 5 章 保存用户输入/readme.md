@@ -220,13 +220,170 @@ AssertionError: '1: Buy pen' not found in ['1: Use pen to take notes']
 
 ### 5.4 事不过三，三则重构
 
-看一下功能测试中的代码异味。检查清单表格中新添加的待办事项时，用了三个几乎一样的代码块。编程中有个原则叫做“不要自我重复”。
+看一下功能测试中的代码异味（表明一段代码需要重写）。检查清单表格中新添加的待办事项时，用了三个几乎一样的代码块。编程中有个原则叫做“不要自我重复”。
 
 要提交目前已编写的代码，重构之前一定要提交：
 
 ```shell
 git diff
 git commit -a
+```
+
+然后重构功能测试。可以定义一个行间函数，不过这样会搅乱测试流程。记住只有名字以 `test_` 开头的方法才会作为测试运行，可以根据需求使用其他方法。
+
+```python
+def check_for_row_in_list_table(self, row_text):
+    table = self.browser.find_element_by_id("id_list_table")
+    rows = table.find_elements_by_tag_name("tr")
+    self.assertIn(row_text, [row.text for row in rows])
+```
+
+作者喜欢把辅助方法放在类的顶部，置于 tearDown 和第一个测试之间。接下来在 `functional_tests.py` 中使用这个辅助方法：
+
+```python
+        # Y 按下回车键后, 页面更新了
+        # 待办事项表格中显示了 "1: Buy pen"
+        input_box.send_keys(Keys.ENTER)
+        self.check_for_low_in_list_table("1: Buy pen")
+
+        # 页面中又显示了一个文本框, 可以输入其他的待办事项
+        # Y 输入了 Use pen to take notes
+        # Y 做事很有条理
+        input_box = self.browser.find_element_by_id("id_new_item")
+        input_box.send_keys("Use pen to take notes")
+        input_box.send_keys(Keys.ENTER)
+
+        # 页面再次更新, 她的清单中显示了这两个待办事项
+        self.check_for_low_in_list_table("1: Buy pen")
+        self.check_for_low_in_list_table("2: Use pen to take notes")
+
+        # Y 想知道这个网站是否会记住她的清单
+        self.fail("Finish the test!")  # 不管怎样, self.fail 都会失败, 生成指定的错误消息。我使用这个方法提醒测试结束了。
+```
+
+再次运行功能测试，看重构前后的表现是否一致，之后提交这次针对功能测试的重构：
+
+```shell
+git diff # 查看 functional_tests.py 中的改动
+git commit -a
+```
+
+### 5.5 Django ORM 和第一个模型
+
+“对象关系映射器”（Object-Relational Mapper，ORM）是一个数据抽象层，描述存储在数据库中的表、行和列。处理数据库时，可以使用熟悉的面向对象方式，写出更好的代码。在 ORM 的概念中，类对应数据库中的表，属性对应列，类的单个实例表示数据库中的一行数据。
+
+Django 对 ORM 提供了良好的支持，学习 ORM 的绝佳方法是在单元测试中使用它，因为单元测试能按指定方式使用 ORM。
+
+下面在 lists/tests.py 文件中新建一个类：
+
+```python
+from lists.models import Item
+
+class ItemModelTest(TestCase):
+    def test_saving_and_retrieving_items(self):
+        first_item = Item()
+        first_item.text = "The first (ever) list item"
+        first_item.save()
+        
+        second_item = Item()
+        second_item.text = "Item the second"
+        second_item.save()
+        
+        saved_items = Item.objects.all()
+        self.assertEqual(saved_items.count(), 2)
+        
+        first_saved_item = saved_items[0]
+        second_saved_item = saved_items[1]
+        self.assertEqual(first_saved_item.text, "The first (ever) list item")
+        self.assertEqual(second_saved_item.text, "Item the second")
+```
+
+由上述代码可以看出，在数据库中创建新纪录的过程很简单：先创建一个对象，再为一些属性赋值，然后调用 .save() 函数。Django 提供了一个查询数据库的 API，即类属性 .objects。再使用可能是最简单的查询方法 .all()，取回这个表中的全部记录。得到的结果是一个类似列表的对象，叫 QuerySet。从这个对象中可以提取出单个对象，然后还可以再调用其它函数，例如 .count()。接着，检查存储在数据库中的对象，看保存的信息是否正确。
+
+Django 中的 ORM 有很多有用且直观的功能。略读 [Django](https://docs. djangoproject.com/en/1.7/intro/tutorial01/) 教程，这个教程很好地介绍了 ORM 的功能。
+
+> 单元测试和集成测试的区别以及数据库
+>
+> 真正的单元测试绝不能涉及数据库操作。刚编写的测试叫做“整合测试”（Integrated Test）更确切，因为它不仅测试代码，还依赖于外部系统，即数据库
+
+试着运行单元测试，接下来要进入另一次“单元测试/编写代码”循环：
+
+```python
+ImportError: cannot import name "Item"
+```
+
+下面在 lists/models.py 中写入一些代码，让它有内容可导入。直接跳过 ``Item=None`` 这一步，直接创建类：
+
+```python
+from django.db import models
+
+class Item(object):
+    pass
+```
+
+这些代码让测试向前进展了，为了给 Item 类提供 save 方法，要让它继承 Model 类。
+
+#### 5.5.1 第一个数据库迁移
+
+再次运行测试，会看到一个数据库错误：
+
+```python
+django.db.utils.OperationalError: no such table: lists_item
+```
+
+在 Django 中，ORM 的任务是模型化数据库。创建数据库其实是由另一个系统负责的，叫做“迁移”（migration）。迁移的任务是，根据你对 models.py 文件的改动情况，添加或删除表和列。
+
+可以把迁移想象成数据库使用的版本控制系统。把应用部署到线上服务器升级数据库时，迁移十分有用。
+
+现在只需要知道如何创建第一个数据库迁移——使用 makemigrations 命令创建迁移：``python manage.py makemigrations``
+
+#### 5.5.2 测试向前走得挺远
+
+``python manage.py test lists``
+
+可以发现这次离上次失败的位置整整八行。在这八行代码中，保存了两个待办事项，检查它们是否存入了数据库。
+
+继承 models.Model 的类映射到数据库中的一个表。默认情况下，这种类会得到一个自动生成的 id 属性，作为表的主键，但是其他列都要自行定理。定义文本字段的方法如下：
+
+```python
+class Item(models.Model):
+    text = models.TextField()
+```
+
+Django 提供了很多其他字段类型，例如 IntegerField、CharField、DateField 等。使用 TextField 而不用 CharField，是因为后者需要限制长度，但是就目前而言，这个字段的长度是随意的。关于字段类型的介绍可以阅读 Django [教程](https://docs.djangoproject. com/en/1.7/intro/tutorial01/#creating-models)和[文档](https://docs.djangoproject.com/en/1.7/ ref/models/fields/)。
+
+#### 5.5.3 添加新字段就要创建新迁移
+
+运行测试，会看到另一个数据库错误：
+
+```python
+django.db.utils.OperationalError: no such column: lists_item.text
+```
+
+出现这个错误的原因是在数据库中添加了一个新字段，所以要再创建一个迁移。
+
+创建迁移试试：``python manage.py makemigrations``
+
+会提示一个选项，这里选择选项 2：`2) Quit, and let me add a default in models.py`
+
+这个命令不允许添加没有默认值的列，选择完第二个选项后，在 models.py 中设定一个默认值。
+
+```python
+class Item(models.Model):
+    text = models.TextField(default="")
+```
+
+现在应该可以顺利创建迁移了：`python manage.py makemigrations`
+
+在 models.py 中添加了两行新代码，创建了两个数据库迁移，由此得到的结果是，模型对象上的 .text 属性能被识别为一个特殊属性了，因此属性的值能保存到数据库中，测试也能通过了。
+
+下面提交创建的第一个模型：
+
+```shell
+git status # 看到 tests.py 和 models.py, 以及两个没跟踪的迁移文件
+git diff # 审查 tests.py 和 modesl.py 中的改动
+git add lists
+git commit -m "Model for list Items and associated migration"
 ```
 
 
