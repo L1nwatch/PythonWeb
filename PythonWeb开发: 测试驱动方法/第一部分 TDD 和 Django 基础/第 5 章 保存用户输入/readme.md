@@ -554,7 +554,7 @@ class HomePageTest(TestCase):
 </table>
 ```
 
-这是模板系统的主要优势之一。现在模板会渲染多个 `<tr>` 行，每一行对应 items 变量中的一个元素。可以阅读 [Django 文档](https://docs.djangoproject.com/en/1.7/topics/templates/)，学习模板的其他用法。
+这是模板系统的主要优势之一。现在模板会渲染多个 `<tr>` 行，每一行对应 items 变量中的一个元素，可以阅读 [Django 文档](https://docs.djangoproject.com/en/1.7/topics/templates/)，学习模板的其他用法。
 
 只修改模板还不能让测试通过，还要在首页的视图把待办事项传入模板：
 
