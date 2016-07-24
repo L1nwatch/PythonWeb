@@ -386,5 +386,245 @@ git add lists
 git commit -m "Model for list Items and associated migration"
 ```
 
+### 5.6 把 POST 请求中的数据存入数据库
 
+接下来，要修改针对首页中的 POST 请求的测试。希望视图把新添加的待办事项存入数据库，而不是直接传给响应。为了测试这个操作，要在现有的测试方法中添加三行新代码：
 
+```python
+def  test_home_page_can_save_a_POST_requests(self):
+    ...
+    
+    self.assertEqual(Item.objects.count(), 1) # 检查是否把一个新 Item 对象存入数据库。objects.count() 是 objects.all().count() 的简写形式。
+    new_item = Item.objects.first() # objects.first() 等价于 objects.all()[0]
+    self.assertEqual(new_item.text, "A new list item") # 检查待办事项的文本是否正确
+```
+
+这个测试变得有点儿长，看起来要测试很多不同的东西。这也是一种代码异味。
+
+再次运行测试，会看到一个预期失败。修改一下视图：
+
+```python
+from django.shortcuts import render
+from lists.models import Item
+
+def home_page(request):
+    item = Item()
+    item.text = request.POST.get("item_text", "")
+    item.save()
+    
+    return render(request, "home.html", {
+  		"new_item_text": request.POST.get("item_text", ""),
+	})
+```
+
+这里有个很明显的问题，每次请求首页都保存一个无内容的待办事项。稍后再解决。
+
+看一下单元测试的进展如何，发现通过了，现在可以做些重构了：
+
+```python
+return render(request, "home.html", {
+  	"new_item_text": item.text
+})
+```
+
+现在有几个待解决的问题：
+
+* 不要每次请求都保存空白的待办事项
+* 代码异味：POST 请求的测试太长
+* 在表格中显示多个待办事项
+* 支持多个清单！
+
+现在为第一个问题定义一个新的测试方法：
+
+```python
+class HomePageTest(TestCase):
+    def test_home_page_only_saves_items_when_necessary(self):
+        request = HttpRequest()
+        home_page(request)
+        self.assertEqual(Item.objects.count(), 0)
+```
+
+测试得到预期的失败，下面对视图函数进行改动：
+
+```python
+def home_page(request):
+    if request.method == "POST":
+        new_item_text = request.POST["item_text"] # 使用一个名为 new_item_text 的变量，其值是 POST 请求中的数据，或者是空字符串
+        Item.objects.create(text=new_item_text) # .objects.create 是创建新 Item 对象的简化方式，无需再调用 .save() 方法
+    else:
+        new_item_text = ""
+        
+    return render(request, "home.html", {
+ 		"new_item_text": new_item_text    
+	})
+```
+
+### 5.7 处理完 POST 请求后重定向
+
+`new_item_text = ""` 不太合适，幸好第二个问题有机会可以顺带解决这个问题。[人们都说处理完 POST 请求之后一定要重定向](https://en.wikipedia.org/ wiki/Post/Redirect/Get)。再次修改针对保存 POST 请求数据的单元测试，不让它渲染包含待办事项的响应，而是重定向到首页：
+
+```python
+def test_home_page_can_save_a_POST_request(self):
+    request = HttpRequest()
+    request.method = "POST"
+    request.POST["item_text"] = "A new list item"
+    
+    response = home_page(request)
+    
+    self.assertEqual(Item.objects.count(), 1)
+    new_item = Item.objects.first()
+    self.assertEqual(new_item.text, "A new list item")
+    
+    self.assertEqual(response.status_code, 302)
+    self.assertEqual(response["location"], "/")
+```
+
+re，因此把相应的断言删掉了。现在，响应是 HTTP 重定向，状态码是 302，让浏览器指向一个新地址。
+
+修改之后运行测试，得到的结果是 `200 != 302` 错误。现在可以大幅度清理视图函数了：
+
+```python
+from django.shortcuts import redirect, render
+from lists.models import Item
+
+def home_page(request):
+    if request.method == "POST":
+        Item.objects.create(text=request.POST["item_text"])
+        return redirect("/")
+    
+    return render(request, "home.html")
+```
+
+#### 更好的单元测试实践方法：一个测试只测试一件事
+
+现在视图函数处理完 POST 请求后会重定向，这是习惯做法，而且单元测试也一定程度上缩短了，不过还可以做得更好。良好的单元测试实践方法要求，一个测试只能测试一件事。更改代码如下：
+
+```python
+def test_home_page_can_save_a_POST_request(self):
+    request = HttpRequest()
+    request.method = "POST"
+    request.POST["item_text"] = "A new list item"
+    
+    response = home_page(request)
+    
+    self.assertEqual(Item.objects.count(), 1)
+    new_item = Item.objects.first()
+    self.assertEqual(new_item.text, "A new list item")
+    
+def test_home_page_redirects_after_POST(self):
+    request = HttpRequest()
+    request.method = "POST"
+    request.POST["item_text"] = "A new list item"
+    
+    response = home_page(request)
+    
+    self.assertEqual(response.status_code, 302)
+    self.assertEqual(response["location"], "/")
+```
+
+### 5.8 在模板中渲染待办事项
+
+接下来要解决的问题是在表格中显示多个待办事项。要编写一个新单元测试，检查模板是否也能显示多个待办事项：
+
+```python
+class HomePageTest(TestCase):
+    def test_home_page_displays_all_list_items(self):
+        """
+        测试首页是否能把所有待办事项都显示出来
+        :return:
+        """
+        Item.objects.create(text="itemey 1")
+        Item.objects.create(text="itemey 2")
+
+        request = HttpRequest()
+        response = home_page(request)
+        response_content = response.content.decode()
+
+        self.assertIn("itemey 1", response_content)
+        self.assertIn("itemey 2", response_content)
+```
+
+这个测试和预期一样会失败，Django 的模板句法中有一个用于遍历列表的标签，即 `{% for .. in .. %}` 。可以按照下面的方式使用这个标签：
+
+```html
+<table id="id_list_table">
+  {% for item in items %}
+  	<tr><td>1: {{ item.text }}</td></tr>
+  {% endfor %}
+</table>
+```
+
+这是模板系统的主要优势之一。现在模板会渲染多个 `<tr>` 行，每一行对应 items 变量中的一个元素。可以阅读 [Django 文档](https://docs.djangoproject.com/en/1.7/topics/templates/)，学习模板的其他用法。
+
+只修改模板还不能让测试通过，还要在首页的视图把待办事项传入模板：
+
+```python
+def home_page(request):
+    if request.method == "POST":
+        Item.objects.create(text=request.POST["item_text"])
+        return redirect("/")
+    
+	items = Item.objects.all()
+	return render(request, "home.html", {"items": items})
+```
+
+单元测试是能通过了，关键是功能测试能通过吗？`python functional_tests.py`
+
+很显然不能，要使用另一种功能测试调试技术，手动访问网站。可以看到提示“no such table: lists_item”（没有这个表：lists_item）。
+
+### 5.9 使用迁移创建生产数据库
+
+又是一个 Django 生成的很有帮助的错误消息，大意是说没有正确设置数据库。为什么在单元测试中一切都运行良好呢？这是因为 Django 为单元测试创建了专用的测试数据库。
+
+为了设置好真正的数据库，要创建一个数据库。SQLite 数据库只是硬盘中的一个文件。你会在 Django 的 settings.py 文件中发现，默认情况下，Django 把数据库保存为 db.sqlite3，放在项目的基目录中。
+
+我们已经在 models.py 文件和后来创建的迁移文件中告诉 Django 创建数据库所需的一切信息，为了创建真正的数据库，要使用 Django 中另一个强大的 manage.py 命令——migrate：`python manage.py migrate`
+
+创建时需要回答一个关于超级用户的问题，暂时回答”no“，因为现在还不需要(PS: 自己咋没遇到这个选项)。现在，可以刷新 localhost 上的页面了，可以发现错误页面不见了。然后再运行功能测试。
+
+发现快成功了，只需要让清单显示正确的序号即可。另一个出色的 Django 模板标签 for loop.counter 能帮助解决这个问题：
+
+```html
+{% for item in items %}
+	<tr><td>{{ forloop.counter }}: {{ item.text }}</td></tr>
+{% endfor %}
+```
+
+再试一次，应该会看到功能测试运行到最后了。
+
+不过运行测试时，可以注意到每一次运行测试时都会在数据库中遗留了数据，这需要一种自动清理机制。你可以手动清理，方法是先删除数据库再执行 migrate 命令 新建。
+
+```shell
+rm db.sqlite3
+python manage.py migrate --noinput
+```
+
+清理之后要确保功能测试仍能通过。先做一次提交吧。
+
+```shell
+git add lists
+git commit -m "Redirect after POST, and show all items in template"
+```
+
+> 你可能会觉得在每一章结束时做个标记很有用，例如在本章结束时可以这么做：`git tag end-of-chapter-05`
+
+这一章做的内容总结：
+
+* 编写了一个表单，使用 POST 请求把新待办事项添加到清单中
+* 创建了一个简单的数据库模型，用来存储待办事项
+* 使用了至少三种功能测试调试技术
+
+> 有用的 TDD 概念
+>
+> * 回归
+>   * 新添加的代码破坏了应用原本可以正常使用的功能
+> * 意外失败
+>   * 测试在意料之外失败了。这意味着测试中有错误，或者测试帮我们发现了一个回归，因此要在代码中修正。
+> * 遇红/变绿/重构
+>   * 描述 TDD 流程的另一种方式。先编写一个测试看着它失败（遇红），然后编写代码让测试通过（变绿），最后重构，改进实现方式。
+> * 三角法
+>   * 添加一个测试，专门为某些现有的代码编写用例，以此推断出普适的实现方式
+> * 事不过三，三则重构
+>   * 判断何时删除重复代码时使用的经验法则。如果两段代码很相似，往往还要等到第三段相似代码出现，才能确定重构时哪一部分是真正共通、可重用的。
+> * 记在便签上的待办事项清单
+>   * 在便签上记录编写代码过程中遇到的问题，等手头的工作完成后再回过头来解决
