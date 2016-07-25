@@ -335,3 +335,278 @@ git commit -am "new URL, view and template to display lists"
 ```
 
 ### 6.6 用于添加待办事项的 URL 和 视图
+
+#### 6.6.1 用来测试新建清单的测试类
+
+打开文件 lists/tests.py，把 `test_home_page_can_save_a_POST_request` 和 `test_home_page_redirects_after_POST` 两个方法移到一个新类中，然后再修改这两个方法的名字：
+
+```python
+class NewListTest(TestCase):
+    def test_saving_a_POST_request(self):
+        request = HttpRequest()
+        request.method = "POST"
+        [...]
+    
+    def test_redirects_after_POST(self):
+        [...]
+```
+
+然后使用 Django 测试客户端重写：
+
+```python
+class NewListTest(TestCase):
+    def test_saving_a_POST_request(self):
+        """
+        测试页面是否能够保存 POST 请求, 并且能够把用户提交的待办事项保存到表格中
+        :return:
+        """
+        self.client.post("/lists/new", data={"item_text": "A new list item"})
+
+        # 检查是否把一个新 Item 对象存入数据库。objects.count() 是 objects.all().count() 的简写形式。
+        self.assertEqual(Item.objects.count(), 1, "希望数据库中现在有 1 条数据, 然而却有 {} 条数据".format(Item.objects.count()))
+        new_item = Item.objects.first()  # objects.first() 等价于 objects.all()[0]
+        self.assertEqual(new_item.text, "A new list item")  # 检查待办事项的文本是否正确
+
+    def test_redirects_after_POST(self):
+        """
+        测试在发送 POST 请求后是否会重定向
+        :return:
+        """
+        response = self.client.post("/lists/new", data={"item_text": "A new list item"})
+
+        self.assertEqual(response.status_code, 302, "希望返回 302 代码, 然而却返回了 {}".format(response.status_code))
+        self.assertEqual(response["location"], "/lists/the-only-list-in-the-world")
+```
+
+运行测试，发现 404 错误。这是因为还没把 /lists/new 添加到 URL 映射中，所以 client.post 得到的是 404 响应。
+
+#### 6.6.2 用于新建清单的 URL 和 视图
+
+下面添加新的 URL 映射：
+
+```python
+urlpatterns = [
+    # url(r'^admin/', admin.site.urls),
+    url(r"^$", "lists.views.home_page", name="home"),
+    url(r"^lists/the-only-list-in-the-world/$", "lists.views.view_list", name="view_list"),
+    url(r"^lists/new$","lists.view.new_list",name="new_list")
+]
+```
+
+再运行测试，发现错误。现在既然知道需要的是重定向，那就从 `home_page` 视图中借用一行代码吧。
+
+```python
+def new_list(request):
+    return redirect("/lists/the-only-list-in-the-world/")
+```
+
+现在的测试结果表明没有加入新事物，再次向 `home_page` 借用一行代码即可。
+
+```python
+def new_list(request):
+    Item.objects.create(text=request.POST["item_text"])
+    return redirect("/lists/the-only-list-in-the-world")
+```
+
+另外一个错误是作者提到的【自己并没有遇到，可能是版本不同】：
+
+```python
+self.assertEqual(response['location'], '/lists/the-only-list-in-the-world/')
+     AssertionError: 'http://testserver/lists/the-only-list-in-the-world/' !=
+     '/lists/the-only-list-in-the-world/'
+```
+
+出现这个失败的原因是，Django 测试客户端的表现和纯正的视图函数有细微差别：测试客户端使用完整的 Django 组件，会在相对 URL 前加上域名。使用 Django 提供的另一个测试辅助函数换掉重定向的两步检查：
+
+```python
+    def test_redirects_after_POST(self):
+        """
+        测试在发送 POST 请求后是否会重定向
+        :return:
+        """
+        response = self.client.post("/lists/new", data={"item_text": "A new list item"})
+
+        self.assertEqual(response.status_code, 302, "希望返回 302 代码, 然而却返回了 {}".format(response.status_code))
+        self.assertEqual(response["location"], "/lists/the-only-list-in-the-world/")
+        self.assertRedirects(response, "/lists/the-only-list-in-the-world/")  # 等价于上面两条
+```
+
+【PS】自己做的时候 self.assertRedirects 反而报错了，说是 301 代码。后来发现是链接最后一个斜杠没加上。。。
+
+#### 6.6.3 删除当前多余的代码和测试
+
+现在要大幅度精简 `home_page` 函数了，比如说，可以删除整个 `if request.method == "POST"` 部分？
+
+```python
+def home_page(request):
+    return render(request, "home.html")
+```
+
+还可以把多余的测试方法 `test_home_page_only_saves_items_when_necessary` 也删掉。
+
+#### 6.6.4 让表单指向刚添加的新 URL
+
+最后，修改两个表单，让它们使用刚添加的新的 URL。在 home.html 和 lists.html 中，把表单改成：
+
+```python
+<form method="POST" action="/lists/new">
+```
+
+然后运行功能测试，确保一切正常运行，或者至少和修改前的状态一样。
+
+接下来可以作为一次完整的提交：对 URL 映射做了些改动。
+
+```shell
+git status # 5 个改动的文件
+git diff
+git commit -a
+```
+
+### 6.7 调整模型 
+
+现在下决心修改模型。先调整模型的单元测试。这次换种方式，以差异的形式表示改动的地方：
+
+```python
+@@ -3,7 +3,7 @@ from django.http import HttpRequest
+      from django.template.loader import render_to_string
+      from django.test import TestCase
+     -from lists.models import Item
+     +from lists.models import Item, List
+      from lists.views import home_page
+      class HomePageTest(TestCase):
+     @@ -60,22 +60,32 @@ class ListViewTest(TestCase):
+     -class ItemModelTest(TestCase):
+     +class ListAndItemModelsTest(TestCase):
+          def test_saving_and_retrieving_items(self):
+     +        list_ = List()
+     +        list_.save()
+     +
+              first_item = Item()
+              first_item.text = 'The first (ever) list item'
+     +        first_item.list = list_
+              first_item.save()
+        
+              second_item = Item()
+              second_item.text = 'Item the second'
+     +        second_item.list = list_
+    		  second_item.save()
+     +        saved_list = List.objects.first()
+     +        self.assertEqual(saved_list, list_)
+     +
+              saved_items = Item.objects.all()
+              self.assertEqual(saved_items.count(), 2)
+              first_saved_item = saved_items[0]
+              second_saved_item = saved_items[1]
+              self.assertEqual(first_saved_item.text, 'The first (ever) list item')
+     +        self.assertEqual(first_saved_item.list, list_)
+              self.assertEqual(second_saved_item.text, 'Item the second')
+     +        self.assertEqual(second_saved_item.list, list_)
+```
+
+新建了一个 List 对象，然后通过给 .list 属性赋值把两个待办事项归在这个对象名下。要检查这个清单是否正确保存，也要检查是否保存了那两个待办事项与清单之间的关系。还可以直接比较两个清单（`saved_list` 和 `list_` ）——其实比较的是两个清单的主键（.id 属性）是否相同。
+
+> 使用变量名 `list_` 的目的是防止遮盖 Python 原生的 `list` 函数。
+
+在接下来的几次迭代中，只给出每次运行测试时期望看到的错误消息，不会告诉你运行测试前要输入哪些代码，你要自己编写每次所需的最少代码改动。
+
+依次会看到的错误消息是：
+
+```python
+ImportError: cannot import name "List"
+AttributeError: 'List' object has no attribute 'save'
+django.db.utils.OperationalError: no such table: lists_list
+```
+
+因此，需要执行一次 `makemigrations` 命令。
+
+之后会看到：
+
+```python
+self.assertEqual(first_saved_item.list, list_)
+     AttributeError: 'Item' object has no attribute 'list'
+```
+
+#### 6.7.1 通过外键实现的关联
+
+Item 的 list 属性实现，先把它当成 text 属性试试。
+
+```python
+class Item(models.Model):
+    text = modesl.TextField(default="")
+    list = modesl.TextField(default="")
+```
+
+照例，测试会告诉我们需要做一次迁移。`python manage.py makemigrations`
+
+再看一下测试结果如何：`AssertionError: 'List object' != <List: List object>`
+
+仔细看 `!=` 两边的内容。Django 只保存了 List 对象的字符串形式。若想保存对象之间的关系，要告诉 Django 两个类之间的关系，这种关系使用 ForeignKey 字段表示：
+
+```python
+from django.db import models
+
+class List(models.Model):
+    pass
+
+class Item(models.Model):
+    text = models.TextField(Defualt="")
+    list = modes.ForeignKey(List, default=None)
+```
+
+修改之后也要做一次迁移，同时之前的迁移没用了，删掉吧：
+
+```shell
+rm lists/migrations/0004_item_list.py
+python manage.py makemigrations
+```
+
+> 删除迁移是种危险操作。如果删除已经用于某个数据库的迁移，Django 就不知道当前状态，因此也就不知道如何运行以后的迁移。只有当你确定某个迁移没被使用时才能将其删除。根据经验，已经提交到 VCS 的迁移绝不能删除。
+
+#### 6.7.2 根据新模型定义调整其他代码
+
+再看测试的结果如何：`python manage.py test lists`
+
+出现这些错误是因为我们在待办事项和清单之间建立了关联，在这种关联中，每个待办事项都需要一个父级清单，但是原来的测试并没有考虑到这一点。
+
+最简单的方法是修改 ListViewTest，为测试中的两个待办事项创建父清单：
+
+```python
+class ListViewTest(TestCase):
+    def test_displays_all_items(self):
+        list_ = List.objects.create()
+        Item.objects.create(text="itemey 1", list=list_)
+        Item.objects.create(text="itemey 2", list=list_)
+```
+
+修改之后，失败测试减少到两个，而且都是向 `new_list` 视图发送 POST 请求引起的。使用惯用的技术分析调用跟踪，由错误消息找到导致错误的测试代码，然后再找出相应的应用代码，最终定位到下面这行。
+
+```python
+    Item.objects.create(text=request.POST["item_text"])
+```
+
+这行调用跟踪表明创建待办事项时没有指定父清单。因此，要对视图做类似修改：
+
+```python
+from lists.models import Item, List
+
+def new_list(request):
+    list_ = List.objects.create()
+    Item.objects.create(text=request.POST["item_text"], list=list_)
+    return redirect("/lists/the-only-list-in-the-world/")
+```
+
+修改之后，测试又能通过了。
+
+为了确信一切都能正常运行，要再次运行功能测试。确保测试的结果和修改前一样。现在功能没有破坏，在此基础上还修改了数据库。提交：
+
+```shell
+git status
+git add lists
+git diff -staged
+git commit
+```
+
+### 6.8 每个列表都应该有自己的 URL
+
+
+

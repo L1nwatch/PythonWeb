@@ -24,5 +24,6 @@ __author__ = '__L1n__w@tch'
 urlpatterns = [
     # url(r'^admin/', admin.site.urls),
     url(r"^$", "lists.views.home_page", name="home"),
-    url(r"^lists/the-only-list-in-the-world/$", "lists.views.view_list", name="view_list")
+    url(r"^lists/the-only-list-in-the-world/$", "lists.views.view_list", name="view_list"),
+    url(r"^lists/new$", "lists.views.new_list", name="new_list")
 ]
