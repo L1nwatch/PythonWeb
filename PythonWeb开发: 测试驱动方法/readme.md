@@ -4,5 +4,5 @@
 已经形成 GitBook 链接了, [从 GitBook 看笔记可读性更好些](https://l1nwatch.gitbooks.io/pythonweb/content/)
 
 # 目前进度
-* 第一部分第 5 章, 笔记查看[GitBook 对应章节](https://l1nwatch.gitbooks.io/pythonweb/content/)
+* 第一部分第 6 章, 笔记查看[GitBook 对应章节](https://l1nwatch.gitbooks.io/pythonweb/content/)
 
