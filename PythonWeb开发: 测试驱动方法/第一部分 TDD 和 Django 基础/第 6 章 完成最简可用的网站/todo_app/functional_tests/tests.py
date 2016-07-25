@@ -4,7 +4,6 @@
 """
 进行功能测试的文件
 """
-import unittest
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
 from django.test import LiveServerTestCase
@@ -81,6 +80,10 @@ class NewVisitorTest(LiveServerTestCase):
         # Y 按下回车键后, 页面更新了
         # 待办事项表格中显示了 "1: Buy pen"
         input_box.send_keys(Keys.ENTER)
+        edith_list_url = self.browser.current_url
+        # assertRegex 是 unittest 中的一个辅助函数，检查字符串是否和正则表达式匹配。我们使用这个方法检查是否实现了新的 REST 式设计。
+        # 具体用法参阅 [unittest 的文档](https://docs.python.org/3/library/unittest.html)
+        self.assertRegex(edith_list_url, "/lists/.+")  # TestCase 里的
         self.check_for_low_in_list_table("1: Buy pen")
 
         # 页面中又显示了一个文本框, 可以输入其他的待办事项
@@ -94,14 +97,41 @@ class NewVisitorTest(LiveServerTestCase):
         self.check_for_low_in_list_table("1: Buy pen")
         self.check_for_low_in_list_table("2: Use pen to take notes")
 
+        # 现在一个叫做 F 的新用户访问了网站
+        ## 使用一个新浏览器会话
+        ## 确保 Y 的信息不会从 cookie 中泄露出来
+        self.browser.quit()
+        self.browser = webdriver.Firefox()
+
+        # F 访问首页
+        # 页面中看不到 Y 的清单
+        self.browser.get(self.live_server_url)
+        page_text = self.browser.find_element_by_tag_name("body").text
+        self.assertNotIn("Buy pen", page_text)
+        self.assertNotIn("Use pen to take notes", page_text)
+
+        # F 输入一个新待办事项，新建一个清单
+        input_box = self.browser.find_element_by_id("id_new_item")
+        input_box.send_keys("Buy milk")
+        input_box.send_keys(Keys.ENTER)
+
+        # F 获得了他唯一的 URL
+        francis_list_url = self.browser.current_url
+        self.assertRegex(francis_list_url, "/lists/.+")
+        self.assertNotEqual(francis_list_url, edith_list_url)
+
+        # 这个页面还是没有 U 的清单
+        page_text = self.browser.find_element_by_tag_name("body").text
+        self.assertNotIn("Buy pen", page_text)
+        self.assertIn("Buy milk", page_text)
+
         # Y 想知道这个网站是否会记住她的清单
-        self.fail("Finish the test!")  # 不管怎样, self.fail 都会失败, 生成指定的错误消息。我使用这个方法提醒测试结束了。
 
         # 她看到网站为她生成了一个唯一的 URL
         # 而且页面中有一些文字解说这个功能
 
         # 她访问那个 URL, 发现她的待办事项列表还在
-        pass
+        self.fail("Finish the test!")  # 不管怎样, self.fail 都会失败, 生成指定的错误消息。我使用这个方法提醒测试结束了。
 
 
 if __name__ == "__main__":
