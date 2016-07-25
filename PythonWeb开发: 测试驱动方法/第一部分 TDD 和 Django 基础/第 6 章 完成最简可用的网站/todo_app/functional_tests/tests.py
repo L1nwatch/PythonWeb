@@ -31,7 +31,7 @@ class NewVisitorTest(LiveServerTestCase):
         # 她很满意, 去睡觉了
         self.browser.quit()
 
-    def check_for_low_in_list_table(self, row_text):
+    def check_for_row_in_list_table(self, row_text):
         """
         测试给定字符串是否在表格中
         :param row_text: 需要判断的字符串
@@ -84,7 +84,7 @@ class NewVisitorTest(LiveServerTestCase):
         # assertRegex 是 unittest 中的一个辅助函数，检查字符串是否和正则表达式匹配。我们使用这个方法检查是否实现了新的 REST 式设计。
         # 具体用法参阅 [unittest 的文档](https://docs.python.org/3/library/unittest.html)
         self.assertRegex(edith_list_url, "/lists/.+")  # TestCase 里的
-        self.check_for_low_in_list_table("1: Buy pen")
+        self.check_for_row_in_list_table("1: Buy pen")
 
         # 页面中又显示了一个文本框, 可以输入其他的待办事项
         # Y 输入了 Use pen to take notes
@@ -94,8 +94,8 @@ class NewVisitorTest(LiveServerTestCase):
         input_box.send_keys(Keys.ENTER)
 
         # 页面再次更新, 她的清单中显示了这两个待办事项
-        self.check_for_low_in_list_table("1: Buy pen")
-        self.check_for_low_in_list_table("2: Use pen to take notes")
+        self.check_for_row_in_list_table("1: Buy pen")
+        self.check_for_row_in_list_table("2: Use pen to take notes")
 
         # 现在一个叫做 F 的新用户访问了网站
         ## 使用一个新浏览器会话

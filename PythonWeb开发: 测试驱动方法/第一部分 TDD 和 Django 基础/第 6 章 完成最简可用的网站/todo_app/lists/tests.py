@@ -14,6 +14,30 @@ from lists.models import Item
 __author__ = '__L1n__w@tch'
 
 
+class ListViewTest(TestCase):
+    def test_displays_all_list_items(self):
+        """
+        测试页面是否能把所有待办事项都显示出来
+        :return:
+        """
+        Item.objects.create(text="itemey 1")
+        Item.objects.create(text="itemey 2")
+
+        response = self.client.get("/lists/the-only-list-in-the-world/")  # 现在不直接调用视图函数了
+
+        # 现在不必再使用 assertIn 和 response.content.decode() 了
+        # Django 提供 assertContains 方法，它知道如何处理响应以及响应内容中的字节
+        self.assertContains(response, "itemey 1")
+        self.assertContains(response, "itemey 2")
+
+    def test_uses_list_template(self):
+        """
+        测试是否使用了不同的模板
+        :return:
+        """
+        response = self.client.get("/lists/the-only-list-in-the-world/")
+        self.assertTemplateUsed(response, "list.html")
+
 class ItemModelTest(TestCase):
     def test_saving_and_retrieving_items(self):
         first_item = Item()
@@ -91,7 +115,7 @@ class HomePageTest(TestCase):
         self.assertEqual(response.content.decode("utf8"), expected_html)
         """
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response["location"], "/")
+        self.assertEqual(response["location"], "/lists/the-only-list-in-the-world")
 
     def test_home_page_only_saves_items_when_necessary(self):
         """
@@ -102,6 +126,7 @@ class HomePageTest(TestCase):
         home_page(request)
         self.assertEqual(Item.objects.count(), 0)
 
+    '''首页不再需要显示清单了
     def test_home_page_displays_all_list_items(self):
         """
         测试首页是否能把所有待办事项都显示出来
@@ -116,3 +141,4 @@ class HomePageTest(TestCase):
 
         self.assertIn("itemey 1", response_content)
         self.assertIn("itemey 2", response_content)
+    '''

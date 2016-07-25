@@ -180,3 +180,158 @@ AssertionError: Regex didn't match: '/lists/.+' not found in 'http://localhost:8
 git commit -a
 ```
 
+### 6.4 逐步迭代，实现新设计
+
+现在要解决的问题是，为每个清单添加唯一的 URL 和标识符。清单的 URL 出现在重定向 POST 请求之后。在文件 `lists/tests.py` 中，找到 `test_home_page_redirects_after_POST`，修改重定向期望转向的地址：
+
+```python
+self.assertEqual(response.status_code, 302)
+self.assertEqual(response["location"], "/lists/the-only-list-in-the-world/")
+```
+
+我们一次只做一项改动，既然应用现在只支持一个清单，那这就是唯一合理的 URL。
+
+接下来修改 lists/view.spy 中的 `home_page` 视图：
+
+```python
+def home_page(request):
+    if request.method == "POST":
+        Item.objects.create(text=request.POST["item_text"])
+        return redirect("/lists/the-only-list-in-the-world")
+    
+    items = Item.objects.all()
+    return render(request, "home.html", {"items": items})
+```
+
+这么修改，功能测试显然会失败，因为网站中并没有这个 URL。运行功能测试，会看到测试在尝试提交第一个待办事项后失败，提示无法找到显示清单的表格。出现这个错误的原因是，`/the-only-list-in-the-world/` 这个 URL 还不存在。
+
+### 6.5 使用 Django 测试客户端一起测试视图、模板和 URL
+
+之前使用单元测试检查是否能解析 URL，还调用了视图函数检查它们是否能正常使用，还检查了视图能否正确渲染模板。其实，Django 提供了一个小工具，可以一次完成这三种测试。
+
+#### 6.5.1 一个新测试类
+
+下面使用 Django 测试客户端。打开 lists/tests.py，添加一个新测试类，命名为 ListViewTest。然后把 HomePageTest 类中的 `test_home_page_displays_all_list_items` 方法复制到这个新类中。重命名这个方法，再做些修改：
+
+```python
+class ListViewTest(TestCase):
+    def test_displays_all_list_items(self):
+        """
+        测试页面是否能把所有待办事项都显示出来
+        :return:
+        """
+        Item.objects.create(text="itemey 1")
+        Item.objects.create(text="itemey 2")
+
+        response = self.client.get("/lists/the-only-list-in-the-world/")  # 现在不直接调用视图函数了
+
+        # 现在不必再使用 assertIn 和 response.content.decode() 了，Django 提供 assertContains 方法，它知道如何处理响应以及响应内容中的字节
+        self.assertContains(response, "itemey 1")
+        self.assertContains(response, "itemey 2")
+```
+
+> 有些人并不喜欢 Django 测试客户端。这些人说测试客户端隐藏了太多细节，而且牵涉了太多本该在真正的单元测试中使用的组件，因此最终写成的测试叫整合测试更合适。他们还抱怨，使用测试客户端的测试运行太慢（以毫秒计）。
+
+尝试运行这个测试，得到 404 错误。
+
+#### 6.5.2 一个新 URL
+
+在 superlists/urls.py 中解决这个问题
+
+> 留意 URL 末尾的斜线，在测试中和 urls.py 中都要小心，因为这个斜线往往就是问题的根源
+
+```python
+urlpatterns = patterns("",
+	url(r"^$","lists.views.home_page", name="home"),
+	url(r"^lists/the-only-list-in-the-word/$","lists.views.view_list", name="view_list")
+                      )
+```
+
+再次运行测试，报错无法导入对应视图函数。
+
+#### 6.5.3 一个新视图函数
+
+在 lists/views.py 中定义一个新视图函数：
+
+```python
+def view_list(request):
+	pass
+```
+
+测试失败，把 `home_page` 视图的最后两行复制过来，测试应该能通过了。
+
+接下来该重构了，现在我们有两个视图，一个用于首页，一个用于单个清单。目前，这两个视图共用一个模板，而且传入了数据库中的所有待办事项。如果仔细查看单元测试中的方法，或许会发现某些部分需要修改：
+
+```shell
+grep -E "class | def" lists/tests.py
+```
+
+完全可以把 `test_home_page_displays_all_list_items` 方法删除，因为不需要了。而且不再需要在首页中显示所有的待办事项，首页只显示一个输入框让用户新建清单即可。
+
+#### 6.5.4 一个新模板，用于查看清单
+
+既然首页和清单视图是不同的页面，它们就应该使用不同的 HTML 模板。home.html 可以只包含一个输入框，新模板 list.tml 则在表格中显示现有的待办事项。下面添加一个新测试，检查是否使用了不同的模板：
+
+```python
+class ListViewTest(TestCase):
+    def test_uses_list_template(self):
+        response = self.client.get("/lists/the-only-list-in-the-world/")
+        self.assertTemplateUsed(response, "list.html")
+        
+    def test_displays_all_items(self):
+        [...]
+```
+
+assertTemplateUsed 是 Django 测试客户端提供的强大方法之一。检查测试结果，发现报出了 `AssertionError` 错误。然后修改视图：
+
+```python
+def view_list(request):
+    items = Item.objects.all()
+    return render(request, "list.html", {"items":items})
+```
+
+现在运行单元测试，会报出模板不存在的错误。新建该模板，保存为 lists/templates/list.html：`touch lists/templates/list.html`
+
+接着测试，我们会使用到 home.html 中的很多代码，可以先把其中的内容复制过来：`cp lists/templates/home.html lists/templates/list.html`
+
+这会让测试再次通过。现在继续重构。首页不用显示待办事项，只需一个新建清单的输入框就行了。因此进行修改：
+
+```html
+<body>
+  <h1>
+    Start a new To-Do list
+  </h1>
+  <form method="POST">
+    <input name="item_text" id="id_new_item" placeholder="Enter a to-do item" />{% csrf_token %}
+  </form>
+</body>
+```
+
+在 `home_page` 视图中其实也不用把全部待办事项都传入 home.html 模板，因此可以继续修改：
+
+```python
+def home_page(request):
+    if request.method == "POST":
+        Item.objects.create(text=request.POST["item_text"])
+        return redirect("/lists/the-only-list-in-the-world/")
+    return render(request, "home.html")
+```
+
+再次运行单元测试，它们仍然能够通过。然后运行功能测试，输入第二个待办事项时还是失败。问题的原因是新建的待办事项的表单没有 action= 属性，因此默认情况下，提交地址就是渲染表单的页面地址。表单在首页中可用，因为首页是目前唯一知道如何处理 POST 请求的页面，但在视图函数 view_list 中不能用了，POST 请求会直接被忽略。在 list.html 中修正：
+
+```html
+<form method="POST" action="/">
+```
+
+然后再运行功能测试，可以发现重新回到了修改前的状态，这就意味着重构结束了。现在清单有唯一的 URL 了。
+
+提交目前取得的进展：
+
+```shell
+git status # 会看到 4个改动的文件和 1 个新文件 list.html
+git add lists/templates/list.html
+git diff
+git commit -am "new URL, view and template to display lists"
+```
+
+### 6.6 用于添加待办事项的 URL 和 视图
