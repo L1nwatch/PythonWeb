@@ -608,5 +608,246 @@ git commit
 
 ### 6.8 每个列表都应该有自己的 URL
 
+最简单的处理方式是使用数据库自动生成的 id 字段。下面修改 ListViewTest，让其中的两个测试指向新 URL。
 
+还要把 `test_displays_all_items` 测试重命名为 `test_displays_only_items_for_that_list`，然后在这个测试中确认只显示属于这个清单的待办事项。
+
+```python
+class ListViewTest(TestCase):
+    def test_displays_all_list_items(self):
+        """
+        测试页面是否能把所有待办事项都显示出来
+        :return:
+        """
+        correct_list = List.objects.create()
+        Item.objects.create(text="itemey 1", list_attr=correct_list)
+        Item.objects.create(text="itemey 2", list_attr=correct_list)
+        other_list = List.objects.create()
+        Item.objects.create(text="other item 1", list_attr=other_list)
+        Item.objects.create(text="other item 2", list_attr=other_list)
+
+        response = self.client.get("/lists/{unique_url}/".format(unique_url=correct_list.id))  # 现在不直接调用视图函数了
+        # 现在不必再使用 assertIn 和 response.content.decode() 了
+        # Django 提供 assertContains 方法，它知道如何处理响应以及响应内容中的字节
+        self.assertContains(response, "itemey 1")
+        self.assertContains(response, "itemey 2")
+
+        self.assertNotContains(response, "other item 1")
+        self.assertNotContains(response, "other item 2")
+
+    def test_uses_list_template(self):
+        """
+        测试是否使用了不同的模板
+        :return:
+        """
+        list_ = List.objects.create()
+        response = self.client.get("/lists/{unique_url}/".format(unique_url=list_.id))
+        self.assertTemplateUsed(response, "list.html")
+```
+
+> 可以阅读 [Dive Into Python](http://www.diveintopython.net/)，这本书对字符串代换做了很好的介绍。
+
+运行这个单元测试，会看到预期的 404，以及另一个相关的错误。
+
+#### 6.8.1 捕获 URL 中的参数
+
+现在要学习如何把 URL 中的参数传入视图：
+
+```python
+urlpatterns = [
+    # url(r'^admin/', admin.site.urls),
+    url(r"^$", "lists.views.home_page", name="home"),
+    url(r"^lists/(.+)/$", "lists.views.view_list", name="view_list"),
+    url(r"^lists/new$", "lists.views.new_list", name="new_list")
+]
+```
+
+调整 URL 映射中使用的正则表达式，加入一个“捕获组”（capture group）（.+），它能匹配随后的 / 之前任意个字符。捕获得到的文本会作为参数传入视图。
+
+进行测试，可以发现错误。问题很容易修正，在 views.py 中加入一个参数即可，现在，前面那个预期失败解决了。
+
+接下来要让视图决定把哪些待办事项传入模板：
+
+```python
+def view_list(request, list_id):
+    list_ = List.objects.get(id = list_id)
+    items = Item.objects.filter(list=list_)
+    return render(request, "list.html", {"items": items})
+```
+
+#### 6.8.2 按照新设计调整 `new_list` 视图
+
+现在得到另一个错误，进行相应修改，可以发现 `NewListTest` 还没有按照清单和待办事项的新设计调整，它应该检查视图是否重定向到新建清单的 URL。
+
+```python
+    def test_redirects_after_POST(self):
+        """
+        测试在发送 POST 请求后是否会重定向
+        :return:
+        """
+        response = self.client.post("/lists/new", data={"item_text": "A new list item"})
+        new_list = List.objects.first()
+
+        self.assertEqual(response.status_code, 302, "希望返回 302 代码, 然而却返回了 {}".format(response.status_code))
+        self.assertEqual(response["location"], "/lists/{unique_url}/".format(unique_url=new_list.id))
+        self.assertRedirects(response, "/lists/{unique_url}/".format(unique_url=new_list.id))  # 等价于上面两条
+```
+
+接着修改视图本身，把它改为重定向到有效的地址。
+
+```python
+def new_list(request):
+    list_ = List.objects.create()
+    Item.objects.create(text=request.POST["item_text"], list_attr=list_)
+    return redirect("/lists/{unique_url}/".format(unique_url=list_.id))
+```
+
+这样修改之后单元测试就可以通过了。进行功能测试，发现了一个回归。现在每个 POST 请求都会新建一个清单，破坏了向一个清单中添加多个待办事项的功能。
+
+### 6.9 还需要一个视图，把待办事项加入现有清单
+
+还需要一个 URL 和视图，把新待办事项添加到现有的清单中。
+
+```python
+class NewItemTest(TestCase):
+    def test_can_save_a_POST_request_to_an_existing_list(self):
+        """
+        测试发送一个 POST 请求后能够发送到正确的表单之中
+        :return:
+        """
+        other_list = List.objects.create()
+        correct_list = List.objects.create()
+
+        self.client.post("/lists/{unique_url}/add_item".format(unique_url=correct_list.id),
+                         data={"item_text": "A new item for an existing list"})
+
+        self.assertEqual(Item.objects.count(), 1)
+        new_item = Item.objects.first()
+        self.assertEqual(new_item.text, "A new item for an existing list")
+        self.assertEqual(new_item.list, correct_list)
+
+    def test_redirects_to_list_view(self):
+        """
+        测试添加完事项后会回到显示表单的 html
+        :return:
+        """
+        other_list = List.objects.create()
+        correct_list = List.objects.create()
+
+        response = self.client.post(
+            "/lists/{unique_url}/add_item".format(unique_url=correct_list.id),
+            data={"item_text": "A new item for an existing list"}
+        )
+
+        self.assertRedirects(response, "/lists/{unique_url}/".format(unique_url=correct_list.id))
+```
+
+测试得到两个错误，一个是 `0 != 1`，另一个是 `301 != 302`。
+
+#### 6.9.1 小心霸道的正则表达式
+
+还没在 URL 映射中加入 `/lists/1/add_item`，应该得到 `404 != 302` 错误。怎么会是永久重定向响应（301）？
+
+得到这个错误是因为在 URL 映射中使用了一个非常霸道的正则表达式：
+
+`url(r"^lists/(.+)/$", "lists.views.view_list", name="view_list")`
+
+根据 Django 的内部处理机制，如果访问的 URL 几乎正确，但却少了末尾的斜线，就会得到一个永久重定向响应（301）。在这里，`lists/1/add_item` 符合 `lists/(.+)/` 的匹配模式，其中 `(.+)` 捕获 `1/add_item`，然后 Django 猜测你其实是想访问末尾到斜线的 URL。
+
+这个问题的修正方法是，显示指定 URL 模式只捕获数字，即在正则表达式中使用 `\d`
+
+测试后的结果得到 404 错误了。
+
+#### 6.9.2 最后一个新 URL
+
+下面定义一个新 URL，用于把新待办事项添加到现有清单中：
+
+```python
+urlpatterns = [
+    # url(r'^admin/', admin.site.urls),
+    url(r"^$", "lists.views.home_page", name="home"),
+    url(r"^lists/(\d+)/$", "lists.views.view_list", name="view_list"),
+    url(r"^lists/(\d+)/add_item$", "lists.views.add_item", name="add_item"),
+    url(r"^lists/new$", "lists.views.new_list", name="new_list")
+]
+```
+
+现在 URL 映射中定义了三个类似的 URL。这三个 URL 看起来需要重构。
+
+#### 6.9.3 最后一个新视图
+
+```python
+def add_item(request):
+    pass
+```
+
+测试有所进展，接着修改：
+
+```python
+def add_item(request, list_id):
+    pass
+```
+
+可以从 `new_list` 视图中复制 redirect，从 `view_list` 视图中复制 List.objects.get：
+
+```python
+def add_item(request, list_id):
+    list_ = List.objects.get(id=list_id)
+    Item.objects.create(text=request.POST["item_text"], list_attr=list_)
+    return redirect("/lists/{unique_url}/".format(unique_url=list_id))
+```
+
+这样，测试又能通过了。
+
+#### 6.9.4 如何在表单中使用那个 URL
+
+现在只需在 list.html 模板中使用这个 URL。打开模板，修改表单标签：
+
+```html
+<form method="POST" action="/lists/{{ list.id }}/add_item">
+```
+
+为了能这样写，视图要把清单传入模板。下面在 `ListViewTest` 中新建一个单元测试办法：
+
+```python
+def test_passes_correct_list_to_template(self):
+    other_list = List.objects.create()
+    correct_list = List.objects.create()
+    
+    response = self.client.get("/lists/{}/".format(correct_list.id))
+   	self.assertEqual(response.context["list"], correct_list)
+```
+
+response.context 表示要传入 render 函数的上下文——Django 测试客户端把上下文附在 response 对象上，方便测试。增加这个测试后得到的结果如下：
+
+`KeyError: 'list'`
+
+这是因为没把 list 传入模板，趁机简化视图：
+
+```python
+def view_list(request, list_id):
+    list_ = List.objects.get(id=list_id)
+    return render(request, "list.html", {"list": list_})
+```
+
+显然这么做会导致测试失败，因为模板期望传入的是 items。
+
+可以在 list.html 中修正这个问题，同时还要修改表单 POST 请求的目标地址，即 action 属性。
+
+```html
+<form method="POST" action="/lists/{{ list.id }}/add_item">
+  {% for item in list.item_set.all %}
+  	<tr><td>{{ forloop.counter }}: {{ item.text }}</td></tr>
+  {% endfor %}
+</form>
+```
+
+`.item_set` 叫做反向查询（reverse lookup），是 Django 提供的非常有用的 ORM 功能，可以在其他表中查询某个对象的相关记录。修改模板之后，单元测试能通过了。功能测试同时也过了。
+
+```shell
+git diff
+git commmit -am "new URL + view for adding to existing lists. FT passes :-)"
+```
+
+### 6.10 使用 URL 引入做最后一次重构
 

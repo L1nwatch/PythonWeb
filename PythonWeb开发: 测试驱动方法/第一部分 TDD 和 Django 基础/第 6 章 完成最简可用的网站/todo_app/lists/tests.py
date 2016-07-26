@@ -20,24 +20,38 @@ class ListViewTest(TestCase):
         测试页面是否能把所有待办事项都显示出来
         :return:
         """
-        list_ = List.objects.create()
-        Item.objects.create(text="itemey 1", list_attr=list_)
-        Item.objects.create(text="itemey 2", list_attr=list_)
+        correct_list = List.objects.create()
+        Item.objects.create(text="itemey 1", list_attr=correct_list)
+        Item.objects.create(text="itemey 2", list_attr=correct_list)
+        other_list = List.objects.create()
+        Item.objects.create(text="other item 1", list_attr=other_list)
+        Item.objects.create(text="other item 2", list_attr=other_list)
 
-        response = self.client.get("/lists/the-only-list-in-the-world/")  # 现在不直接调用视图函数了
-
+        response = self.client.get("/lists/{unique_url}/".format(unique_url=correct_list.id))  # 现在不直接调用视图函数了
         # 现在不必再使用 assertIn 和 response.content.decode() 了
         # Django 提供 assertContains 方法，它知道如何处理响应以及响应内容中的字节
         self.assertContains(response, "itemey 1")
         self.assertContains(response, "itemey 2")
+
+        self.assertNotContains(response, "other item 1")
+        self.assertNotContains(response, "other item 2")
 
     def test_uses_list_template(self):
         """
         测试是否使用了不同的模板
         :return:
         """
-        response = self.client.get("/lists/the-only-list-in-the-world/")
+        list_ = List.objects.create()
+        response = self.client.get("/lists/{unique_url}/".format(unique_url=list_.id))
         self.assertTemplateUsed(response, "list.html")
+
+    def test_passes_correct_list_to_template(self):
+        other_list = List.objects.create()
+        correct_list = List.objects.create()
+
+        response = self.client.get("/lists/{}/".format(correct_list.id))
+
+        self.assertEqual(response.context["list_attr"], correct_list)
 
 
 class ListAndItemModelTest(TestCase):
@@ -88,10 +102,11 @@ class NewListTest(TestCase):
         :return:
         """
         response = self.client.post("/lists/new", data={"item_text": "A new list item"})
+        new_list = List.objects.first()
 
         self.assertEqual(response.status_code, 302, "希望返回 302 代码, 然而却返回了 {}".format(response.status_code))
-        self.assertEqual(response["location"], "/lists/the-only-list-in-the-world/")
-        self.assertRedirects(response, "/lists/the-only-list-in-the-world/")  # 等价于上面两条
+        self.assertEqual(response["location"], "/lists/{unique_url}/".format(unique_url=new_list.id))
+        self.assertRedirects(response, "/lists/{unique_url}/".format(unique_url=new_list.id))  # 等价于上面两条
 
 
 class HomePageTest(TestCase):
@@ -114,3 +129,36 @@ class HomePageTest(TestCase):
 
         excepted_html = render_to_string("home.html", request=request)
         self.assertEqual(response.content.decode("utf8"), excepted_html)
+
+
+class NewItemTest(TestCase):
+    def test_can_save_a_POST_request_to_an_existing_list(self):
+        """
+        测试发送一个 POST 请求后能够发送到正确的表单之中
+        :return:
+        """
+        other_list = List.objects.create()
+        correct_list = List.objects.create()
+
+        self.client.post("/lists/{unique_url}/add_item".format(unique_url=correct_list.id),
+                         data={"item_text": "A new item for an existing list"})
+
+        self.assertEqual(Item.objects.count(), 1)
+        new_item = Item.objects.first()
+        self.assertEqual(new_item.text, "A new item for an existing list")
+        self.assertEqual(new_item.list_attr, correct_list)
+
+    def test_redirects_to_list_view(self):
+        """
+        测试添加完事项后会回到显示表单的 html
+        :return:
+        """
+        other_list = List.objects.create()
+        correct_list = List.objects.create()
+
+        response = self.client.post(
+            "/lists/{unique_url}/add_item".format(unique_url=correct_list.id),
+            data={"item_text": "A new item for an existing list"}
+        )
+
+        self.assertRedirects(response, "/lists/{unique_url}/".format(unique_url=correct_list.id))
