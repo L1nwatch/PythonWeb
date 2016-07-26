@@ -851,3 +851,48 @@ git commmit -am "new URL + view for adding to existing lists. FT passes :-)"
 
 ### 6.10 使用 URL 引入做最后一次重构
 
+superlists/urls.py 的真正作用是定义整个网站使用的 URL。如果某些 URL 只在 lists 应用中使用，Django 建议使用单独的文件 lists/urls.py，让应用自成一体。复制 urls 到对应文件夹中，然后把 superlists/urls.py 中的三行定义换成一个 include。注意，include 可以使用一个正则表达式作为 URL 的前缀，这个前缀会添加到引入的所有 URL 上。
+
+```python
+urlpatterns = patterns("",
+	url(r"^$","lists.views.home_page",name="home"),
+	url(r"^lists/",include("lists.urls")),
+	# url(r"^admin/",include(admin.site.urls))
+)
+```
+
+在 lists/urls.py 中只需包含那三个 URL 的后半部分，而且不用再写父级 urls.py 中的其他定义：
+
+```python
+from django.conf.urls import patterns, url
+
+__author__ = '__L1n__w@tch'
+
+urlpatterns = patterns("",
+                       url(r"^(\d+)/$", "lists.views.view_list", name="view_list"),
+                       url(r"^(\d+)/add_item$", "lists.views.add_item", name="add_item"),
+                       url(r"^new$", "lists.views.new_list", name="new_list")
+                       )
+```
+
+再次运行单元测试，确认一切仍能正常运行。提交：
+
+```shell
+git status
+git add lists/urls.py
+git add super/lists/urls.py
+git diff --staged
+git commit
+```
+
+> 有用的 TDD 概念和经验法则
+>
+> * 测试隔离和全局状态
+>
+>   不同的测试之间不能彼此影响，也就是说每次测试结束后都要还原所做的永久性操作。Django 的测试运行库程序可以帮助我们创建一个测试数据库，每次测试结束后都会清空数据库
+>
+> * 从一个可运行状态到另一个可运行状态（测试山羊与重构猫）
+>
+> * YAGNI
+>
+>   You ain't gonna need it 的简称，劝诫你不要受诱惑编写当时看起来可能有用的代码。很有可能你根本用不到这些代码，或者没有准确预见未来的需求。
