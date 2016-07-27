@@ -371,3 +371,74 @@ python manage.py test functional_tests
 
 ### 7.6 使用 Bootstrap 中的组件改进网站外观
 
+#### 7.6.1 超大文本块
+
+Bootstrap 中有个类叫 jumbotron，用于特别突出地显示页面中的元素。使用这个类放大显示页面的主头部和输入表单：
+
+```html
+<div class="col-md-6 col-md-offset-3 jumbotron">
+  <div class="text-center">
+    <h1>
+      {% block header_text %}{% endoblock %}
+    </h1>
+    [...]
+```
+
+#### 7.6.2 大型输入框
+
+Bootstrap 为表单控件提供了一个类，可以把输入框变大：
+
+```html
+<input name="item_text" id="id_new_item" class="form-control input-lg" placeholder="Enter a to-do item"/>
+```
+
+#### 7.6.3 样式化表格
+
+加上 Bootstrap 提供的 table 类可以改进显示效果：
+
+```html
+<table id="id_list_table" class="table">
+```
+
+### 7.7 使用自己编写的 CSS
+
+现在想让输入表单离标题文字远一点。Bootstrap 没有提供现成的解决方案，那么就自己实现吧，引入一个自己编写的 CSS 文件：
+
+```html
+<head>
+  <title>To-Do lists</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="/static/bootstrap/css/bootstrap.min.css" rel="stylesheet" media="screen">
+  <link href="/static/base.css" rel="stylesheet" media="screen">
+</head>
+```
+
+新建文件 /lists/static/base.css，写入自己编写的 CSS 新规则。使用输入框的 id 定位元素，然后为其编写样式：
+
+```css
+#id_new_item{
+  margin-top: 2ex;
+}
+```
+
+如果想进一步定制 Bootstrap，需要编译 LESS。LESS、SCSS 等其他伪 CSS 类工具，对普通的 CSS 做了很大改进，即便不适用 Bootstrap 也很有用。网上有很多 LESS 的参考资料，比如[这个](http://www.smashingmagazine.com/2013/03/12/customizing-bootstrap/)。最后再运行一次功能测试，看一切是否仍能正常运行，接着进行提交。
+
+```shell
+git status # 修改了 tests.py、base.html 和 list.html，未跟踪 lists/static
+git add .
+git status # 会显示添加了所有 Bootstrap 相关文件
+git commit -m "Use Bootstrap to improve layout"
+```
+
+### 7.8 补遗：collectstatic 命令和其他静态目录
+
+Django 的开发服务器会自动在应用的文件夹中查找并呈现静态文件。在开发过程中这种功能不错，但在真正的 Web 服务器中，并不需要让 Django 伺服静态内容，因为使用 Python 伺服原始文件速度慢而且效率低，Apache、Nginx 等 Web 服务器能很好地完成这项任务。或许还会把所有静态文件都上传到 CDN（Content Distribution Network，内容分发网络），不放在自己的主机中。
+
+鉴于此，要把分散在各个应用文件夹中的所有静态文件集中起来，复制一份放在一个位置，为部署做好准备。collectstatic 命令就是用来完成这项操作的。
+
+静态文件集中放置的位置由 settings.py 中的 `STATIC_ROOT` 定义。现在把 `STATIC_ROOT` 的值设为仓库之外的一个文件夹——使用和主源码文件夹同级的一个文件夹：
+
+```shell
+
+```
+
