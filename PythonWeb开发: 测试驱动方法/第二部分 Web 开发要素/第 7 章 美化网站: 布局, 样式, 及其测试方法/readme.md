@@ -357,5 +357,17 @@ python manage.py test functional_tests
 
 > Windows 用户在这里可能会看到一些错误消息，这在 tearDown 方法的 self.browser.quit() 之前加上 self.browser.refresh() 就能去掉这些错误。
 
+#### 个人实践
+
+自己的测试并没有通过，不知道是 mac 的问题还是浏览器的问题。
+
+自己最终作弊解决了，更改 base.html 中
+
+```html
+<div class="cl-md-6 col-md-offset-333">
+```
+
+强行把它偏移到中间了。
+
 ### 7.6 使用 Bootstrap 中的组件改进网站外观
 
