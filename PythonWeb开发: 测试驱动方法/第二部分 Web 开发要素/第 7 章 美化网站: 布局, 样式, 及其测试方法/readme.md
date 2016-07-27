@@ -439,6 +439,84 @@ Django 的开发服务器会自动在应用的文件夹中查找并呈现静态�
 静态文件集中放置的位置由 settings.py 中的 `STATIC_ROOT` 定义。现在把 `STATIC_ROOT` 的值设为仓库之外的一个文件夹——使用和主源码文件夹同级的一个文件夹：
 
 ```shell
-
+.
+├── readme.md
+├── static
+│   └── base.css
+└── todo_app
+    ├── db.sqlite3
+    ├── functional_tests
+    │   ├── __pycache__
+    │   │   └── tests.cpython-34.pyc
+    │   └── tests.py
+    ├── lists
+    │   ├── __init__.py
+    │   ├── __pycache__
+    ...
 ```
+
+关键在于，静态文件所在的文件夹不能放在仓库中——不想把这个文件夹纳入版本控制，因为其中的文件和 lists/static 中的一样。
+
+下面是指定这个文件夹位置的一种优雅方式，路径相对 `settings.py` 文件而言：
+
+```python
+STATIC_URL = "/static/"
+STATIC_ROOT = os.path.abspath(os.path.join(BASE_DIR, "../static"))
+```
+
+在设置文件的顶部，你会看到定义了 `BASE_DIR` 变量。这个变量提供了很大的帮助。下面执行 collectstatic 命令试试：
+
+```shell
+python manage.py collectstatic
+```
+
+此时如果查看 ../static，会看到所有的 CSS 文件。
+
+`collectstatic` 命令还收集了管理后台的所有 CSS 文件。管理后台是 Django 的强大功能之一，现在暂且禁用：
+
+```python
+INSTALLED_APPS = [
+    #'django.contrib.admin',
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.messages',
+    'django.contrib.staticfiles',
+    "lists"
+]
+```
+
+然后再执行 collectstatic：
+
+```shell
+rm -rf ../static/
+python manage.py collectstatic --noinput
+```
+
+总之，现在知道了怎么把所有静态文件都聚集到一个文件夹中，这样 Web 服务器就能轻易找到静态文件。
+
+现在，先提交 settings.py 中的改动：
+
+```shell
+git diff # 会看到 settings.py 中的改动
+git commit -am "set STATIC_ROOT in settings and disable admin"
+```
+
+### 7.9 没谈到的话题
+
+以下话题可以进一步去研究：
+
+* 使用 LESS 定制 Bootstarp
+* 使用 {% static %} 模板标签，这样做更符合 DRY 原则，也不用硬编码 URL
+* 客户端打包工具，例如 bower
+
+> 总结：如何测试设计和布局
+>
+> 不应该为设计和布局编写测试。因为这太像是测试常量，所以写出的测试不太牢靠。
+>
+> 可以编写一些简单的“冒烟测试”，确认静态文件和 CSS 起作用即可。
+>
+> 但是，如果某部分样式需要很多客户端 JavaScript 代码才能使用，就必须为此编写一些测试。
+>
+> 所以要记住，这是一个危险地带。要试着编写最简的测试，确信设计和布局能起作用即可，不必测试具体的实现。我们的目标是能自由修改设计和布局，且无需时不时地调整测试。
 
