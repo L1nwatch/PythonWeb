@@ -345,6 +345,12 @@ git push
 然后，在服务器上拉取这些更新，创建一个虚拟环境，再执行 pip install -r requirements.txt 命令，让服务器中的虚拟环境和本地一样：
 
 ```shell
-
+git pull # 可能会要求你先做 git config
+virtualenv --python=python3 ../virtualenv
+../virtualenv/bin/pip install -r requirement.stxt
+../virtualenv/bin/python3 manage.py runserver
 ```
 
+看起来服务器运行得很顺畅，按 Ctrl-C 键暂时关闭服务器。
+
+注意，使用虚拟环境不一定要执行 activate，直接指定虚拟环境中的 python 或 pip 路径也行。在服务器上，我们就直接使用路径。
