@@ -19,7 +19,6 @@ class NewVisitorTest(StaticLiveServerTestCase):
     # LiveServerTestCase 和 StaticLiveServerCase 一般都在这个方法中启动测试服务器。
     @classmethod
     def setUpClass(cls):
-        # def setUp(cls):
         for arg in sys.argv:  # 在命令行中查找参数 liveserver(从 sys.argv 中获取)
             if "liveserver" in arg:
                 # 如果找到了，就让测试类跳过常规的 setUpClass 方法，把过渡服务器的 URL 赋值给 server_url 变量
@@ -30,7 +29,6 @@ class NewVisitorTest(StaticLiveServerTestCase):
 
     @classmethod
     def tearDownClass(cls):
-        # def tearDown(cls):
         if cls.server_url == cls.live_server_url:
             super().tearDownClass()
 
@@ -157,7 +155,7 @@ class NewVisitorTest(StaticLiveServerTestCase):
 
     def test_layout_and_styling(self):
         # Y 访问首页
-        self.browser.get(self.live_server_url)
+        self.browser.get(self.server_url)
         self.browser.set_window_size(1024, 768)
 
         # 她看到输入框完美地居中显示
