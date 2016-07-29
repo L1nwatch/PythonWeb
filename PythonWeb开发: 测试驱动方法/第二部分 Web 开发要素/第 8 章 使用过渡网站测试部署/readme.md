@@ -347,10 +347,17 @@ git push
 ```shell
 git pull # 可能会要求你先做 git config
 virtualenv --python=python3 ../virtualenv
-../virtualenv/bin/pip install -r requirement.stxt
+../virtualenv/bin/pip3 install -r ../virtualenv/requirements.txt
 ../virtualenv/bin/python3 manage.py runserver
 ```
 
 看起来服务器运行得很顺畅，按 Ctrl-C 键暂时关闭服务器。
 
 注意，使用虚拟环境不一定要执行 activate，直接指定虚拟环境中的 python 或 pip 路径也行。在服务器上，我们就直接使用路径。
+
+看起来服务器运行得很顺畅，按 Ctrl-C 键暂时关闭服务器。
+
+注意，使用虚拟环境并不一定要执行 activate，直接指定虚拟环境中的 python 或 pip 的路径也行。在服务器上，我们就直接使用路径。
+
+#### 8.5.3 简单配置 Nginx
+
