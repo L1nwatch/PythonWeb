@@ -259,5 +259,92 @@ git commit -am "move sqlite database outside of main source tree"
 
 把源码上传到服务器所需的全部 Base 命令如下。export 的作用是创建一个可在 base 中使用的 “本地变量”：
 
+```shell
+export SITENAME=superlists-staging.ottg.eu
+mkdir -p ~/sites/$SITENAME/database
+mkdir -p ~/sites/$SITENAME/static
+mkdir -p ~/sites/$SITENAME/virtualenv
+# 要把下面这行命令中的 URL 换成你自己仓库的 URL
+git clone https://github.com/hjwp/book-example.git ~/sites/$SITENAME/source
+```
 
+> 使用 export 定义的 Bash 变量只在当前终端会话中有效。如果退出服务器后再登陆，就需要重新定义。这个特性有点隐晦，因为 Bash 不会报错，而是直接用空字符串表示未定义的变量，这种处理方式会导致诡异的结果。可以执行 `echo $SITENAME`
+
+现在网站安装好了，在开发服务器中运行试试——这是一个冒烟测试，检查所有活动部件是否连接起来了：
+
+```shell
+cd ~/sites/$SITENAME/source
+python3 manage.py runserver
+```
+
+可以发现还没有安装 Django。
+
+#### 创建虚拟环境
+
+使用 virtualenv 能解决多用户使用 Django 的问题。virtualenv 使用一种优雅的方式在不同的位置安装 Python 包的不同版本，把不同的版本放在各自的 “虚拟环境” 中。
+
+先在本地电脑中试一下：
+
+```shell
+pip3 install virtualenv # 在 Linux/Mac OS 中需要使用 sudo
+```
+
+沿用为服务器规划的文件夹结构：
+
+```shell
+virtualenv --python=python3 ../virtualenv
+ls ../virtualenv/
+```
+
+#### 个人实践
+
+**注意确保 virtualenv 全路径都是 ASCII 字符。**
+
+上述命令会创建一个文件夹，路径是 ../virtualenv。在这个文件夹中有自己的一份 Python 和 pip，还有一个位置用于安装 Python 包。这个文件夹是自成一体的 Python “虚拟”环境。若想使用这个虚拟环境，可以执行 activate 脚本，修改系统路径和 Python 路径，让系统使用这个虚拟环境中的可执行文件和包：
+
+```shell
+which python3
+source ../virtualenv/bin/activate
+which python # 切换到虚拟环境中的 python 了
+python3 manage.py test lists
+```
+
+> 在 Windows 中使用 virtualenv
+>
+> 在 Windows 中有细微的差别，使用时要注意两件事：
+>
+> * virtualenv/bin 文件夹叫 virtualenv/Scripts
+> * 在 Git-Bash 中不要试图运行 active.bat，这个文件是为 DOS shell 编写的，要执行 source ..\virtualenv\Scripts\activate。source 才是关键。
+
+看到了错误消息 "ImportError: No module named django"，这是因为还没在虚拟环境中安装 Django。下面进行安装，可以看到 Django 被安装到虚拟环境的 site-packages 文件夹中：
+
+```shell
+pip install django
+python3 manage.py test lists
+ls ../virtualenv/lib/python3.4/site-packages/
+```
+
+为了保存虚拟环境中所需的包列表，也为了以后能再次创建相同的虚拟环境，可以执行 pip freeze 命令，创建一个 requirements.txt 文件，再把这个文件添加到仓库中：
+
+```shell
+pip freeze > requirements.txt
+deactivate
+cat requirements.txt
+git add requirements.txt
+git commit -m "Add requirements.txt for virtualenv"
+```
+
+> Django 1.7 还没发布的话，可以使用 `pip install https://github.com/django/ django/archive/stable/1.7.x.zip` 安装这个版本。在 requirements.txt 中可以 把“Django==1.7”换成这个 URL,pip 很智能,能解析 URL。可以在本地 执行pip install -r requirements.txt命令,测试复建虚拟环境。会看到 pip 提示,所有包都已安装。
+
+现在执行 git push 命令，把更新推送到代码分享网站中。
+
+```shell
+git push
+```
+
+然后，在服务器上拉取这些更新，创建一个虚拟环境，再执行 pip install -r requirements.txt 命令，让服务器中的虚拟环境和本地一样：
+
+```shell
+
+```
 
