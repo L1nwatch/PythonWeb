@@ -507,7 +507,7 @@ git commit -am "set STATIC_ROOT in settings and disable admin"
 以下话题可以进一步去研究：
 
 * 使用 LESS 定制 Bootstarp
-* 使用 {% static %} 模板标签，这样做更符合 DRY 原则，也不用硬编码 URL
+* 使用 `{% static %}` 模板标签，这样做更符合 DRY 原则，也不用硬编码 URL
 * 客户端打包工具，例如 bower
 
 > 总结：如何测试设计和布局
