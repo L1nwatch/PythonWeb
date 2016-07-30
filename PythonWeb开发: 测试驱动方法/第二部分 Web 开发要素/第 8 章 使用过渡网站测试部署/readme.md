@@ -361,3 +361,92 @@ virtualenv --python=python3 ../virtualenv
 
 #### 8.5.3 简单配置 Nginx
 
+下面创建一个 Nginx 配置文件，把过渡网站收到的请求交给 Django 处理。如下是一个极简的配置(`server: /etc/nginx/sites-available/watch0.top`)：
+
+```json
+server {
+  listen 80;
+  server_name watch0.top;
+  
+  location / {
+    proxy_pass http://localhost:8000;
+  }
+}
+```
+
+这个配置只对过渡网站e的域名有效，而且会把所有请求“代理”到本地 8000 端口，等待 Django 处理请求后得到的响应。
+
+把这个配置保存为 superlists 文件，放在 /etc/nginx/sites-available 文件夹里，然后创建一个符号链接，把这个文件加入启用的网站列表中：
+
+```shell
+echo $SITENAME # 检查在这个 shell 会话中是否还能使用这个变量获取网站名
+sudo ln -s ../sites-available/$SITENAME /etc/nginx/sites-enabled/$SITENAME
+ls -l /etc/nginx/sites-enabled # 确认符号链接是否在那里
+```
+
+在 Debian 和 Ubuntu 中，这是保存 Nginx 配置的推荐做法——把真正的配置文件放在 sites-available 文件夹中，然后在 sites-enabled 文件夹中创建一个符号链接。这么做便于切换网站的在线状态。
+
+还可以把默认的 "Welcome to nginx" 页面删除，避免混淆：
+
+```shell
+sudo rm /etc/nginx/sites-enabled/default
+```
+
+现在测试一下配置：
+
+```shell
+sudo service nginx reload
+/virtualenv/bin/python3 manage.py runserver
+```
+
+> 如果用的是长域名，还要编辑 /etc/nginx/nginx.conf 文件，把 server_names_hash_bucket_size 64; 这行的注释去掉，这样才能使用长域名。执行 reload 命令时，如果配置有问题， Nginx 会提醒你。
+
+#### 个人实践
+
+之间建错了，名字全用的 superlists，但是自己的域名并不是这个。
+
+删除符号链接：
+
+```shell
+# 删除符号链接，有创建就有删除
+rm -rf   symbolic_name   # 切换到对应目录下
+```
+
+统一改成自己的域名之后发现成功了。
+
+接下来看看功能测试的结果如何：`python3 manage.py test functional_tests --liveserver=watch0.top`
+
+尝试提交新待办事项时测试失败了，因为还没设置数据库。运行测试时你可能注意到了 Django 的黄色报错页，页面中显示的消息和测试失败的消息差不多。
+
+#### 8.5.4 使用迁移创建数据库
+
+执行 migrate 命令，可以指定 --noinput 参数，禁止两次询问。
+
+```shell
+../virtualenv/bin/python3 manage.py migrate --noinput
+ls ../database
+../virtualenv/bin/python3 manage.py runserver
+```
+
+再运行功能测试试试，发现网站运行起来了。
+
+> 如果看到 502 - Bad Gateway 错误，可能是因为执行 migrate 命令之后忘记使用 manage.py runserver 重启开发服务器
+
+### 8.6 为部署到生产环境做好准备
+
+在生产环境中真的不能使用 Django 开发服务器。而且，不能依靠 runserver 手动启动服务器。
+
+#### 8.6.1 换用 Gunicorn
+
+Django 提供了很多功能，包括 ORM、各种中间件、网站后台等。
+
+```shell
+../virtualenv/bin/pip install gunicorn
+```
+
+Gunicorn 需要知道 WSGI（Web Server Gateway Interface，Web 服务器网关接口）服务器的路径。这个路径往往可以使用一个名为 application 的函数获取。Django 在文件 superlists/wsgi.py 中提供了这个函数：
+
+```shell
+
+```
+
