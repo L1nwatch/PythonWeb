@@ -447,6 +447,171 @@ Django 提供了很多功能，包括 ORM、各种中间件、网站后台等。
 Gunicorn 需要知道 WSGI（Web Server Gateway Interface，Web 服务器网关接口）服务器的路径。这个路径往往可以使用一个名为 application 的函数获取。Django 在文件 superlists/wsgi.py 中提供了这个函数：
 
 ```shell
-
+../virtualenv/bin/gunicorn todo_app.wsgi:application # 注意 todo_app 根据自己文件夹命名
 ```
+
+如果现在访问网站，会发现所有样式都失效了。如果运行功能测试，会看到的确出问题了。添加待办事项的测试能顺利通过，但布局和样式的测试失败了。
+
+样式失效的原因是，Django 开发服务器会自动伺服静态文件，但 Gunicorn 不会。现在配置 Nginx，让它代为伺服静态文件。
+
+#### 8.6.2 让 Nginx 伺服静态文件
+
+首先，执行 collectstatic 命令，把所有静态文件复制到一个 Nginx 能找到的文件夹中：
+
+```shell
+../virtualenv/bin/python3 manage.py collectstatic --noinput
+ls ../static/
+```
+
+下面配置 Nginx，让它伺服静态文件。
+
+```json
+server {
+  listen 80;
+  server_name watch0.top;
+ 
+  location /static {
+    alias /home/watch/sites/superlists/source/static;
+  }
+ 
+  location / {
+    proxy_pass http://localhost:8000;
+  }
+}
+```
+
+然后重启 Nginx 和 Gunicorn：
+
+```shell
+sudo service nginx reload
+../virtualenv/bin/gunicorn todo_app.wsgi:application
+```
+
+接下来可以运行功能测试进行确认。
+
+#### 8.6.3 换用 Unix 套接字
+
+如果想要同时伺服过渡网站和线上网站，这两个网站就不能共用 8000 端口。可以为不同的网站分配不同端口。但更好的方法是使用 Unix 域套接字。域套接字类似于硬盘中的文件，不过还可以用来处理 Nginx 和 Gunicorn 之间的通信。要把套接字保存在文件夹 /tmp 中。下面修改 Nginx 的代理设置：
+
+```json
+server {
+  listen 80;
+  server_name watch0.top;
+ 
+  location /static {
+    alias /home/watch/sites/superlists/source/static;
+  }
+ 
+  location / {
+    proxy_set_header Host $host;
+    proxy_pass http://unix:/tmp/watch0.top.socket;
+  }
+}
+```
+
+#### 个人实践
+
+vim 全选删除操作：ggVGd。
+
+* gg 让光标移到首行，在 **vim** 才有效，vi 中无效
+* V   是进入Visual(可视）模式
+* G  光标移到最后一行
+* d  删除**选**中内容
+
+`proxy_set_header` 的作用是让 Gunicorn 和 Django 知道它们运行在哪个域名下。`ALLOWED_HOSTS` 安全功能需要这个设置。
+
+现在重启 Gunicorn，不过这一次告诉它监听套接字，而不是默认的端口：
+
+```shell
+sudo service nginx reload
+../virtualenv/bin/gunicorn --bind unix:/tmp/watch0.top.socket todo_app.wsgi:application
+```
+
+还要再次运行功能测试，确保所有测试仍能通过：
+
+```shell
+python3 manage.py test functional_tests --liveserver=watch0.top
+```
+
+#### 8.6.4 把 DEBUG 设为 False，设置 ALLOWED_HOSTS
+
+在自己的服务器中开启调试模式有利于排查问题，但[显示满页的调用跟踪不安全](https://docs.djangoproject.com/en/1.7/ref/settings/#debug)。
+
+在 settings.py 中的顶部有 DEBUG 设置项。如果把它设为 False，还需要设置另一个选项，`ALLOWED_HOSTS`。这个设置在 Django 1.5 中添加，目的是[提高安全性](https://docs.djangoproject.com/en/1.7/ ref/settings/#std:setting-ALLOWED_HOSTS)。不过，在默认的 settings.py 中没有为这个功能提供有帮助的注释。在服务器中按照下面的方式修改 settings.py。
+
+```python
+# 安全警告：别再生产环境中开启调试模式
+DEBUG = False
+
+TEMPLATE_DEBUG = DEBUG
+
+# DEBUG=False 时需要这项设置
+ALLOWED_HOSTS = ["watch0.top"]
+```
+
+然后重启 Gunicorn，再运行功能测试，确保一切正常。
+
+> 在服务器中别提交这些改动。现在只是为了让网站正常运行做的小调整，不是需要纳入仓库的改动。一般来说，简单起见，只会在本地电脑中把改动提交到 Git 仓库。如果需要把代码同步到服务器中，再使用 git push 和 git pull。
+
+#### 8.6.5 使用 Upstart 确保引导时启动 Gunicorn
+
+部署的最后一步是确保服务器引导时自动启动 Gunicorn，如果 Gunicorn 崩溃了还要自动重启。在 Ubuntu 中，可以使用 Upstart 实现这个功能。
+
+```json
+# server:/etc/init/gunicorn-watch0.conf
+description "Gunicorn server for watch0.top"
+
+start on net-device-up # 确保只在服务器联网时才启动 Gunicorn
+stop on shutdown
+
+respawn # 如果进程崩溃，respawn 会自动重启 Gunicorn
+
+setuid watch # setuid 确保以 watch 用户的身份运行 Gunicorn 进程
+chdir /home/watch/sites/superlists/source/todo_app # 设定工作目录
+
+exec ../virtualenv/bin/gunicorn --bind unix:/tmp/watch0.top.socket todo_app.wsgi:application # 真正要执行的进程
+```
+
+Upstart 脚本保存在 /etc/init 中，而且文件名必须以 .conf 结尾。
+
+现在可以使用 start 命令启动 Gunicorn 了：
+
+```shell
+sudo start gunicorn-watch0.top
+```
+
+然后可以再次运行功能测试。
+
+#### 个人实践
+
+发现不支持中文，所以最终填入文件的内容是：
+
+```json
+description "Gunicorn server for watch0.top"
+
+start on net-device-up
+stop on shutdown
+
+respawn
+
+setuid watch
+chdir /home/watch/sites/superlists/source/todo_app
+
+exec ../virtualenv/bin/gunicorn --bind unix:/tmp/watch0.top.socket todo_app.wsgi:application
+```
+
+#### 8.6.6 保存改动：把 Gunicorn 添加到 requirements.txt
+
+回到本地仓库，应该把 Gunicorn 添加到虚拟环境所需的包列表中：
+
+```shell
+source ../virtualenv/bin/activate # 如有必要
+pip install gunicorn
+pip freeze > requirements.txt
+deactivate
+git commit -am "Add gunicorn to virtualenv requirements"
+git push
+```
+
+### 8.7 自动化
 
