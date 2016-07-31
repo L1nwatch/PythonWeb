@@ -615,3 +615,113 @@ git push
 
 ### 8.7 自动化
 
+总结一下配置和部署的过程。
+
+* 配置
+  * 假设有用户账户和 home 目录
+  * apt-get nginx git python-pip
+  * pip install virtualenv
+  * 添加 Nginx 虚拟主机配置
+  * 添加 Upstart 任务，自动启动 Gunicorn
+* 部署
+  * 在 ~/sites 中创建目录结构
+  * 拉取源码，保存到 source 文件夹中
+  * 启用 ../virtualenv 中的虚拟环境
+  * pip install -r requirements.txt
+  * 执行 manage.py migrate，创建数据库
+  * 执行 collectstatic 命令，收集静态文件
+  * 在 settings.py 中设置 DEBUG = False 和 ALLOWED_HOSTS
+  * 重启 Gunicorn
+  * 运行功能测试，确保一切正常
+
+假设现在不用完全自动化配置过程，则应该把 Nginx 和 Upstart 配置文件保存起来，便于以后重用。下面把这两个配置文件保存到仓库中一个新建的子文件夹中：
+
+```shell
+mkdir deploy_tools
+```
+
+```json
+# deploy_tools/nginx.template.conf
+server {
+  listen 80;
+  server_name SITENAME;
+  
+  location /static {
+    alias /home/watch/sites/SITENAME/static;
+  }
+
+  location / {
+    proxy_set_header Host $host;
+    proxy_pass http://unix:tmp/SITENAME.socket;
+  }
+}
+```
+
+```json
+# deploy_tools/gunicorn-upstart.template.conf
+description "Gunicorn server for SITENAME"
+
+start on net-device-up
+stop on shutdown
+
+respawn
+
+setuid watch
+chdir /home/watch/sites/SITENAME/source
+
+exec ../virtualenv/bin/gunicorn --bind unix:/tmp/SITENAME.socket superlists.wsgi:application
+```
+
+以后使用这两个文件配置新网站就容易了，查找替换 SITENAME 即可。
+
+其他步骤做些笔记就行了，在仓库中建个文件保存说明：
+
+```markdown
+配置新网站
+=======
+
+## 需要安装的包
+* nginx
+* Python 3
+* Git
+* pip
+* virtualenv
+
+以 Ubuntu 为例，可以执行下面的命令安装：
+  sudo apt-get install nginx git python3 python3-pip
+  sudo pip3 install virtualenv
+  
+## 配置 Nginx 虚拟主机
+* 参考 nginx.template.conf
+* 把 SITENAME 替换成所需的域名，例如 watch0.top
+
+## Upstart 任务
+* 参考 gunicorn-upstart.template.conf
+* 把 SITENAME 替换成所需的域名，例如 watch0.top
+
+## 文件夹结构：
+假设有用户账户，home 目录为 /home/username
+
+/home/username
+	sites
+		SITENAME
+			database
+			source
+			static
+			virtualenv
+```
+
+然后提交上述改动：
+
+```shell
+git add deploy_tools
+git status # 看到三个新文件
+git commit -m "Notes and template config files for provisioning"
+```
+
+> 测试驱动服务器配置和部署
+>
+> * 测试去除了部署过程中的某些不确定性
+> * 常见痛点：数据库、静态文件、依赖和自定义设置
+> * 测试允许我们做实验
+
