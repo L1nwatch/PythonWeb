@@ -1,27 +1,9 @@
-## 第 9 章 使用 Fabric 自动部署
-
-手动部署过渡服务器的意义通过自动部署才能体现出来。部署的过程能重复执行，我们才能确信部署到生产环境时不会出错。
-
-使用 Fabric 可以在服务器中自动执行命令。可以系统全局安装 Fabric，因为它不是网站的核心功能，所以不用放到虚拟环境中，也不用加入 requirements.txt 文件。在本地电脑中执行下述命令安装 Fabric：`pip install fabric`
-
-> 在 Windows 中安装 Fabric
->
-> Fabric 依赖于 pycrypto，而这个包需要编译。在 Windows 中编译相当痛苦，所以使用别人预先编译好的二进制安装程序往往更快捷。Michael Foord 提供了一些预先编译好的 [pycrypto Windows 二进制安装程序](http://www.voidspace.org.uk/python/ modules.shtml#pycrypto)。
->
-> 在 Windows 中安装 Fabric 的过程如下：
->
-> * 从前面提供的地址下载并安装 pycrypto
-> * 使用 pip 安装 Fabric
->
-> 还有一个预编译好的 Python 包 Windows 安装[程序源](http://www.lfd.uci.edu/~gohlke/ pythonlibs/)也很棒，由 Christoph Gohlke 维护。
-
-Fabric 的使用方法一般是创建一个名为 fabfile.py 的文件，在这个文件中定义一个或多个函数，然后使用命令行工具 fab 调用：`fab function_name, host=SERVER_ADDRESS`。这个命令会调用名为 `function_name` 的函数，并传入要连接的服务器地址 `SERVER_ADDRESS`。fab 命令还有很多其他参数，可以指定用户名和密码等，详情可执行 fab --help 命令查阅。
-
-### 9.1 分析一个 Fabric 部署脚本
-
-Fabric 的用法，通过实例来说明，以下这个脚本自动执行前一章用到的所有部署步骤。在这个脚本中，主函数是 main，我们在命令行中要调用的就是这个函数。除此之外，脚本中还有多个辅助函数。从命令行传入的服务器地址保存在 env.host 中。
-
-```python
+#!/bin/env python3
+# -*- coding: utf-8 -*-
+# version: Python3.X
+""" 使用 Fabric 进行自动化部署
+"""
+import random
 from fabric.contrib.files import append, exists, sed
 from fabric.api import env, local, run
 
@@ -42,21 +24,15 @@ def deploy():
     _update_virtualenv(source_folder)
     _update_static_files(source_folder)
     _update_database(source_folder)
-```
 
-创建目录结构的方法如下，即便某个文件夹已经存在也不会报错：
 
-```python
 def _create_directory_structure_if_necessary(site_folder):
     for sub_folder in ("database", "static", "virtualenv", "source"):
         # run 的作用是在服务器中执行指定的 shell 命令
         # mkdir -p 是 mkdir 的一个有用变种，它有两个优势，其一是深入多个文件夹层级创建目录；其二，只在必要时创建目录。
         run("mkdir -p {}/{}".format(site_folder, sub_folder))
-```
 
-然后拉取源码：
 
-```python
 def _get_latest_source(source_folder):
     # exists 检查服务器中是否有指定的文件夹或文件。我们指定的是隐藏文件夹 .git，检查仓库是否已经克隆到文件夹中。
     if exists(source_folder + "/.git"):
@@ -71,13 +47,8 @@ def _get_latest_source(source_folder):
     current_commit = local("git log -n 1 --format=%H", capture=True)
     # 执行 git reset --hard 命令，切换到指定的提交。这个命令会撤销在服务器中对代码仓库所做的任何改动。
     run("cd {} && git reset --hard {}".format(source_folder, current_commit))
-```
 
-> 为了让这个脚本可用，你要执行 git push 命令把本地仓库推送到代码分享网站，这样服务器才能拉取仓库，再执行 git reset 命令。如果你遇到 Could not parse object 错误，可以执行 git push 命令。
 
-然后更新配置文件，设置 `ALLOWED_HOSTS` 和 `DEBUG`，还要创建一个密钥：
-
-```python
 def _update_settings(source_folder, site_name):
     settings_path = source_folder + "/superlists/settings.py"
     # Fabric 提供的 sed 函数作用是在文本中替换字符串。这里把 DEBUG 的值由 True 改成 False
@@ -97,13 +68,8 @@ def _update_settings(source_folder, site_name):
     # 使用的是 "相对导入"(relative import，使用 from .secret key 而不是 from secret_key)
     # 目的是确保从本地而不是从 sys.path 中其他位置的模块导入。
     append(settings_path, "\nfrom .secret_key import SECRET_KEY")
-```
 
-> 有些人，建议使用环境变量设置密钥等，你觉得在你的环境中哪种方法安全，就使用哪种方法。
 
-接下来创建或更新虚拟环境：
-
-```python
 def _update_virtualenv(source_folder):
     virtualenv_folder = source_folder + "/../virtualenv"
     # 在 virtualenv 文件夹中查找可执行文件 pip，以检查虚拟环境是否存在
@@ -111,43 +77,16 @@ def _update_virtualenv(source_folder):
         run("virtualenv --python=python3 {}".format(virtualenv_folder))
     # 然后和之前一样，执行 pip install -r 命令
     run("{}/bin/pip install -r {}/requirements.txt".format(virtualenv_folder, source_folder))
-```
 
-更新静态文件只需要一个命令：
 
-```python
 def _update_static_files(source_folder):
     # 如果需要执行 Django 的 manage.py 命令，就要指定虚拟环境中二进制文件夹，确保使用的是虚拟环境中的 Django 版本，而不是系统中的版本
     run("cd {} && ../virtualenv/bin/python3 manage.py collectstatic --noinput".format(source_folder))
-```
 
-最后，执行 manage.py migrate 命令更新数据库：
 
-```python
 def _update_database(source_folder):
     run("cd {} && ../virtualenv/bin/python3 manage.py migrate --noinput".format(source_folder))
-```
 
-### 9.2 试用部署脚本
 
-可以在现有的过渡服务器中使用这个部署脚本——这个脚本可以在现有的服务器中运行，也可以在新服务器中运行。如果再次运行，这个脚本不会做任何操作。
-
-```shell
-cd deploy_tools
-fab deploy:host=watch@watch0.top
-```
-
-> 配置 Fabric
->
-> 如果使用 SSH 密钥登录，密钥存储在默认的位置，而且本地电脑和服务器使用相同的用户名，那么无需配置即可直接使用 Fabric。如果不满足这几个条件，就要配置用户名、SSH 密钥的位置或密码等，才能让 fab 执行命令。
->
-> 这几个信息可在命令行中传给 Fabric。更多信息可执行 `fab --help` 命令查看，或者阅读 [Fabric 的文档](http://docs.fabfile.org/)。
-
-#### 9.2.1 部署到线上服务器
-
-下面在线上服务器中试试这个脚本：
-
-```shell
-fab deploy:host=watch@watch0.top
-```
-
+if __name__ == "__main__":
+    pass
