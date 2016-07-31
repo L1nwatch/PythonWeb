@@ -13,3 +13,4 @@
     * [第二部分 Web 开发要素](PythonWeb开发: 测试驱动方法/第二部分 Web 开发要素/readme.md)]
         * [第 7 章 美化网站: 布局, 样式, 及其测试方法](PythonWeb开发: 测试驱动方法/第二部分 Web 开发要素/第 7 章 美化网站: 布局, 样式, 及其测试方法/readme.md)
         * [第 8 章 使用过渡网站测试部署](PythonWeb开发: 测试驱动方法/第二部分 Web 开发要素/第 8 章 使用过渡网站测试部署/readme.md)
+        * [第 9 章 使用 Fabric 自动部署](PythonWeb开发: 测试驱动方法/第二部分 Web 开发要素/第 9 章 使用 Fabric 自动部署/readme.md)
