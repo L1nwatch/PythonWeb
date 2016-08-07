@@ -148,6 +148,93 @@ fab deploy:host=watch@watch0.top
 下面在线上服务器中试试这个脚本：
 
 ```shell
+fab deploy:host=watch@watch0.top # 注意 Python3 会报错，得用 Python2 安装 fabric 后再运行(2016.08.07)
+```
+
+#### 【个人实践】
+
+```shell
+# 重新弄了个仓库，专门用来搭建这个网站的
+https://github.com/L1nwatch/superlists_for_pythonweb.git
+
+# 然后重新 git
+git https://github.com/L1nwatch/superlists_for_pythonweb.git
+
+# 之后切换到对应目录
 fab deploy:host=watch@watch0.top
+
+# 报错了，第一个错就是
+Fatal error: Low level socket error connecting to host localhost: Connection refused
+找了下相关资料，发现是我的 SSH 端口号并不是默认的 22，于是改成这样：
+fab deploy:host=watch@watch0.top:29999 # 即输入自己的 SSH 端口号
+
+# 接着不断根据提示的错误进行更改
+最终无错即可
+```
+
+#### 9.2.2 使用 sed 配置 Nginx 和 Gunicorn
+
+把网站放到生产环境之前，根据配置笔记，还要使用模板文件创建 Nginx 虚拟主机和 Upstart 脚本。使用 Unix 命令行工具完成：
+
+```shell
+sed "s/SITENAME/watch0.top/g" deploy_tools/nginx.template.conf | sudo tee /etc/nginx/sites-available/watch0.top
+```
+
+sed（stream editor, 流编辑器）的作用是编辑文本流。Fabric 中进行文本替换的函数也叫 sed，这并不是巧合。这里，使用 `s/replaceme/withthis/g` 句法把字符串 SITENAME 替换成网站的地址。然后使用管道操作（|）把文本流传给一个有 root 权限的用户处理（sudo），把传入的文本流写入一个文件，即 sites-available 文件夹中的一个虚拟主机配置文件。
+
+现在可以激活这个文件配置的虚拟主机：
+
+```shell
+sudo ln -s ../sites-available/watch0.top /etc/nginx/sites-enabled/watch0.top
+```
+
+然后编写 Upstart 脚本：
+
+```shell
+sed "s/SITENAME/watch0.top/g" deploy_tools/gunicorn-upstart.template.conf | sudo tee /etc/init/gunicorn-watch0.top.conf
+```
+
+最后，启动这两个服务：
+
+```shell
+sudo service nginx reload
+sudo start gunicorn-watch0.top
+```
+
+成功运行后可以提交把 fabfile.py 添加到仓库中：
+
+```shell
+git add deploy_tools/fabfile.py
+git commit -m "Add a fabfile for automated deploys"
+```
+
+### 9.3 使用 Git 标签标注发布状态
+
+最后还要做些管理操作。为了保留历史标记，使用 Git 标签（tag）标注代码库的状态，指明服务器中当前使用的是哪个版本：
+
+```shell
+git tag LIVE
+export TAG=`date +DEPLOYED-%F/%H%M` # 生成一个时间戳
+echo $TAG # 会显示 "DEPLOYED-" 和时间戳
+git tag $TAG
+git push origin LIVE $TAG # 推送标签
+```
+
+现在，无论何时都能轻易地查看当前代码库和服务器中的版本有何差异。看一下提交历史中的标签：
+
+```shell
+git log --graph --oneline --docorate
+```
+
+### 9.4 延伸阅读
+
+可以考虑使用 Fabric 的替代品 Ansible。
+
+### 自己的测试：
+
+自己编写的 fabfile.py 能够完成从 git 库一直到配置 nginx 和 gunicorn 了，以下完整的步骤（假定当前是一个刚装好的 Ubuntu 系统）：
+
+```shell
+
 ```
 
