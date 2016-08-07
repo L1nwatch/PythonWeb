@@ -6,5 +6,5 @@
 # 目前进度
 * 笔记查看[GitBook 对应章节](https://l1nwatch.gitbooks.io/pythonweb/content/)
 * 第一部分 6 章结束
-* 第二部分第 8 章结束
+* 第二部分第 9 章结束
 
