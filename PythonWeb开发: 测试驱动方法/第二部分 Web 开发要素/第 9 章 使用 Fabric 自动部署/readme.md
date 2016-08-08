@@ -235,6 +235,28 @@ git log --graph --oneline --docorate
 自己编写的 fabfile.py 能够完成从 git 库一直到配置 nginx 和 gunicorn 了，以下完整的步骤（假定当前是一个刚装好的 Ubuntu 系统）：
 
 ```shell
+# -m 表示创建 home 目录，-s 表示 watch 默认能使用 bash
+# 添加用户，名为 watch
+useradd -m -s /bin/bash watch 
+# 把 watch 添加到 sudo 用户组
+usermod -a -G sudo watch 
+# 设置 watch 的密码
+passwd watch 
+# 把当前用户切换为 watch
+su - watch 
 
+# 安装所需的软件
+sudo apt-get install nginx
+sudo apt-get install git python3 python3-pip
+sudo pip3 install virtualenv
+sudo pip install fabric
+
+# git 仓库
+git init
+git pull https://github.com/L1nwatch/superlists_for_pythonweb.git
+
+# 自动化部署
+cd deploy_tools
+fab deploy:host=watch@watch0.top:29999
 ```
 
