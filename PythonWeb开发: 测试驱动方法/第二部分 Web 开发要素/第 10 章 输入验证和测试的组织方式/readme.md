@@ -214,3 +214,336 @@ python3 manage.py test functional_tests.test_list_item_validation
 
 #### 10.2.1 重构单元测试，分拆成多个文件
 
+要为模型编写一个新测试，但在此之前，先要使用类似于功能测试的整理方法整理单元测试。两者之间有个区别，因为 lists 应用中既有应用代码也有测试代码，所以要把测试放到单独的文件夹中：
+
+```shell
+mkdir lists/tests
+touch lists/tests/__init__.py
+git mv lists/tests.py lists/tests/test_all.py
+git status
+git add lists/tests
+python3 manage.py test lists
+git commit -m "Move unit tests into a folder with single file"
+```
+
+```
+**个人实践**
+移动之后我的 PyCharm 自己产生了 `__init__.py` 文件，然后运行测试失败了。后来发现得把 `todo_app` 中的 `__init__.py` 删除才能成功，否则会报这么一个错误：`ImportError: No module named 'todo_app.lists'`。话说 `tests/__init__.py` 这个文件是要存在的，别乱删了。
+
+另外，由于自己修改了 settings.py，需要重写自动化部署的脚本。现在发现这么一个问题：
+start: Job is already running: gunicorn-watch0.top
+说是已经在运行了，所以要杀死这个进程：
+ps -ef | grep gunicron
+sudo kill pid
+之后再尝试重新部署，发现这东西居然会自动运行啊，杀完之后马上就又开始运行了。解决思路是删掉 /etc/init/gunicorn-watch0.top 文件后重启，果然可以了，然后测试自动化部署，居然直接就成功了。
+```
+
+现在把 `test_all.py` 分成两个文件：一个名为 `test_views.py`，只包含视图测试，另一个名为 `test_models.py`。
+
+```shell
+git mv lists/tests/tests_all.py lists/tests/test_views.py
+cp lists/tests/test_views.py lists/tests/test_models.py
+```
+
+然后清理 `test_models.py`，只留下一个测试方法，所以导入的模块也更少了：
+
+```python
+from django.test import TestCase
+from lists.models import Item, List
+
+class ListAndItemModelsTest(TestCase):
+    [...]
+```
+
+而 `test_views.py` 只减少了一个类。
+
+再次运行测试，确保一切正常。之后就可以提交了。
+
+```shell
+git add lists/tests
+git commit -m "Split out unit tests into two files"
+```
+
+> 有些人喜欢项目一开始就把单元测试放在一个测试文件夹中，而且还多建一个文件，`test_forms.py`。这种做法很棒。
+
+#### 10.2.2 模型验证的单元测试和 `self.assertRaises` 上下文管理器
+
+要在 ListAndItemModelsTest 中添加一个新测试方法，尝试创建一个空待办事项：
+
+```python
+    def test_cannot_save_empty_list_items(self):
+        list_ = List.objects.create()
+        item = Item(list_attr=list_, text="")
+        # 这是一个新的单元测试技术，如果想检查做某件事是否会抛出异常，可以使用 self.assertRaises 上下文管理器。
+        # 此处还可写成：
+        # try:
+        #     item.save()
+        #     self.fail("The save should have raised an exception")
+        # except ValidationError:
+        #     pass
+        with self.assertRaises(ValidationError):
+            item.save()
+```
+
+不过使用 with 语句更简洁。现在运行测试，看着它失败。
+
+#### 10.2.3 Django 怪异的表现：保存时不验证数据
+
+遇到了一个 Django 的一个怪异表现。测试本来应该通过的。阅读 [Django 模型字段的文档](https://docs.djangoproject.com/en/1.7/ref/models/fields/#blank)之后，发现 TextField 的默认设置是 `blank=False`，也就是说文本字段应该拒绝空值。
+
+但是为什么测试失败？由于[历史原因](https://groups.google.com/forum/ #!topic/django-developers/uIhzSwWHj4c)，保存数据时 Django 的模型不会运行全部验证。在数据库中实现的约束，保存数据时都会抛出异常，但 SQLite 不支持文本字段上的强制控制约束，所以我们调用 save 方法时无效值悄无声息地通过了验证。
+
+有种方法可以检查约束是否会在数据层执行：如果在数据层制定约束，需要执行迁移才能应用约束。但是，Django 知道 SQLite 不支持这种约束，所以如果运行 makemigrations，会看到消息说没事可做：
+
+```python
+python3 manage.py makemigrations
+No changes detected
+```
+
+不过，Django 提供了一个方法用于运行全部验证，即 `full_clean`。下面把这个方法加入测试，看看是否有用：
+
+```python
+with self.assertRaises(ValidationError):
+    item.save()
+    item.full_clean()
+```
+
+加入之后，测试就通过了。
+
+如果忘了需求，把 text 字段的约束条件设为 `blank=True`，测试可以提醒我们。
+
+### 10.3 在视图中显示模型验证错误
+
+下面尝试在视图中处理模型验证，并把验证错误传入模板，让用户看到。在 HTML 中有选择地显示错误可以使用这种方法——检查是否有错误变量传入模板，如果有就在表单下方显示出来：
+
+```html
+<!-- base.html -->
+<form method="POST" action="{% block form_action %}{% endblock %}">
+  <input name="item_text" id="id_new_item" class="form-control input-lg" placeholder="Enter a to-do item"/>
+  {% csrf_token %}
+  {% if error %}
+  <div class="form-group has-error">
+    <span class="help-block">{{ error }}</span>
+  </div>
+  {% endif %}
+</form>
+```
+
+关于表单控件的更多信息可以[参阅 Bootstrap 文档](http://getbootstrap.com/css/#forms)。
+
+把错误传入模板是视图函数的任务。这里有两种稍微不同的错误处理模式。
+
+在第一种情况中，新建清单视图有可能渲染首页所用的模板，而且还会显示错误消息。单元测试如下：
+
+```python
+class NewListTest(TestCase):
+    [...]
+    
+    def test_validation_errors_are_sent_back_to_home_page_template(self):
+        response = self.client.post("/lists/new", data={"item_text": ""})
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "home.html")
+        excepted_error = "You can't have an empty list item"
+        self.assertContains(response, excepted_error)
+```
+
+编写这个测试时，我们手动输入了字符串形式的地址 `/lists/new`，你可能有点反感。我们之前在测试、视图和模板中硬编码了多个地址，这么做有违 DRY 原则。稍后会重构这些地址。
+
+再看测试，现在测试无法通过，因为现在视图返回 302 重定向，而不是正常的 200 响应。我们在视图中调用 `full_clean()` 试试：
+
+```python
+# views.py
+def new_list(request):
+    list_ = List.objects.create()
+    item = Item.objects.create(text=request.POST["item_text"], list=list_)
+    item.full_clean()
+    return redirect("/lists/{}/".format(list_.id,))
+```
+
+现在模型验证会抛出异常，并且传到了视图中：
+
+```python
+django.core.exceptions.ValidationError: {'text': ['This field cannot be blank.']}
+```
+
+下面使用第一种错误处理方案：使用 `try/except` 检测错误。加入 `try/except` 之后，测试结果又变成了 `302 != 200` 错误。
+
+下面把 pass 改成渲染模板，这么改还兼具检查模板的功能：
+
+```python
+# views.py
+except ValidationError:
+    return render(request, "home.html")
+```
+
+现在测试告诉我们，要把错误消息写入模板。为此，可以传入一个新的模板变量：
+
+```python
+# views.py
+except ValidationError:
+    error = "You can't have an empty list item"
+    return render(request, "home.html", {"error": error})
+```
+
+不过，看样子没什么用，可以让视图输出一些信息以便调试：
+
+```python
+excepted_error = "You can't have an empty list item"
+print(response.content.decode())
+self.assertContains(response, excepted_error)
+```
+
+从输出的信息中可以知道，失败的原因是 [Django 转义了 HTML 中的单引号](https://docs. djangoproject.com/en/1.7/topics/templates/#automatic-html-escaping)。
+
+所以可以在测试中硬编码写入：
+
+`excepted_error = "You can&#39;t have an empty list item"`
+
+但是使用 Django 提供的辅助函数更好一些：
+
+```python
+# test_views.py
+from django.utils.html import escape
+[...]
+	expected_error = escape("You can't have an empty list item")
+    self.assertContains(response, expected_error)
+```
+
+测试通过了。
+
+#### 确保无效的输入值不会存入数据库
+
+继续做其他事情之前，注意我们之前存在逻辑错误。就是即使验证失败仍会创建对象：
+
+```python
+# views.py
+def new_list(request):
+    list_ = List.objects.create()
+    item = Item.objects.create(text=request.POST["item_text"], list_attr=list_)
+    try:
+        item.full_clean()
+    except ValidationError:
+        [...]
+```
+
+要添加一个新单元测试，确保不会保存空待办事项：
+
+```python
+# test_views.py
+    def test_invalid_list_items_arent_saved(self):
+        self.client.post("/lists/new", data={"item_text": ""})
+        self.assertEqual(List.objects.count(), 0)
+        self.assertEqual(List.objects.count(), 0)
+```
+
+修正的方法如下：
+
+```python
+# views.py
+try:
+    item.full_clean()
+    item.save()
+except ValidationError:
+    list_.delete()
+    error = "..."
+    return render ...
+[...]
+```
+
+单元测试过了，但是通能测试却失败了。
+
+```shell
+python3.4 manage.py test functional_tests.test_list_item_validation
+```
+
+注意分析测试结果，可以看出，功能测试的第一部分通过了，但是第二次提交空待办事项也要显示错误消息才行。
+
+可以做个提交了：
+
+```shell
+git commit -am "Adjust new list view to do model validation"
+```
+
+### 10.4 Django 请求：在渲染表单的视图中处理 POST 请求
+
+这一次要使用的处理方式，是 Django 中十分常用的模式：在渲染表单的视图中处理该视图接收到的 POST 请求。这么做虽然不太符合 REST 架构的 URL 规则，却有个很大的好处：同一个 URL 既可以显示表单，又可以显示处理用户输入过程中遇到的错误。
+
+现在的状况是，显示清单用一个视图和 URL，处理新建清单中的待办事项用另一个视图和 URL。要把这两种操作合并到一个视图和 URL 中。所以，在 list.html 中，表单的提交目标地址要改一下：
+
+```html
+{% block form_action %}/lists/{{ list.id }}/{% endblock %}
+```
+
+不小心又硬编码了一个 URL，回想一下，在 home.html 中也有一个。
+
+修改之后功能测试随即失败，因为 `view_list` 视图还不知道如何处理 POST 请求。
+
+> 本节要进行一次应用层的重构。在应用层中重构时，要先修改或增加单元测试，然后再调整代码。使用功能测试检查重构是否完成，以及一切能否像重构前一样正常运行。
+
+#### 10.4.1 重构：把 `new_item` 实现的功能移到 `view_list` 中
+
+NewItemTest 类中的测试用于检查把 POST 请求中的数据保存到现有的清单中，把这些测试全部移到 ListViewTest 类中，还要把原来的请求目标地址 `/lists/%d/add_item` 改成显示清单的 URL：
+
+```python
+# test_views.py
+class ListViewTest(TestCase):
+    [...]
+    
+    def test_can_save_a_POST_request_to_an_existing_list(self):
+        """
+        测试发送一个 POST 请求后能够发送到正确的表单之中
+        :return:
+        """
+        other_list = List.objects.create()
+        correct_list = List.objects.create()
+
+        self.client.post("/lists/{unique_url}/".format(unique_url=correct_list.id),
+                         data={"item_text": "A new item for an existing list"})
+
+        self.assertEqual(Item.objects.count(), 1)
+        new_item = Item.objects.first()
+        self.assertEqual(new_item.text, "A new item for an existing list")
+        self.assertEqual(new_item.list_attr, correct_list)
+
+    def test_POST_redirects_to_list_view(self):
+        """
+        测试添加完事项后会回到显示表单的 html
+        :return:
+        """
+        other_list = List.objects.create()
+        correct_list = List.objects.create()
+
+        response = self.client.post(
+            "/lists/{unique_url}/".format(unique_url=correct_list.id),
+            data={"item_text": "A new item for an existing list"}
+        )
+
+        self.assertRedirects(response, "/lists/{unique_url}/".format(unique_url=correct_list.id))
+```
+
+注意，整个 NewItemTest 类都没有了。而且还修改了重定向测试方法的名字，明确表明只适用于 POST 请求。
+
+然后修改 `view_list` 函数，处理两种请求类型：
+
+```python
+# views.py
+def view_list(request, list_id):
+    list_ = List.objects.get(id=list_id)
+    if request.method == "POST":
+        Item.objects.create(text=request.POST["item_text"], list_attr=list_)
+        return redirect("/lists/{}/".format(list_.id))
+    return render(request, "list.html", {"list_attr": list_})
+```
+
+修改之后测试通过了，现在可以删除 `add_item` 视图了，因为不再需要了。删除之后，还要在 urls.py 中删除引用。这样单元测试就能通过了。
+
+接下来运行功能测试，可以看到仍然是重构之前的失败。说明重构 `add_item` 功能的任务完成了。此时应该提交代码了：
+
+```shell
+git commit -am "Refactor list view to handle new item POSTs"
+```
+
+> 这里破坏了“有测试失败时不重构“这个规则。不过这里是因为若想使用新功能必须重构。如果有单元测试失败，决不能重构。如果喜欢看到一个干净的测试结果，可以在这个功能测试方法加上 @skip 修饰器。
+
+#### 10.4.2 在 `view_list` 视图中执行模型验证
+
