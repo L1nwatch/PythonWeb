@@ -343,3 +343,267 @@ git commit -am "rename all item input ids and names. still broken"
 
 ### 11.3 在处理 POST 请求的视图中使用这个表单
 
+现在要调整 `new_list` 视图的单元测试，更确切地说，要修改针对验证的那个测试方法。
+
+```python
+# test_views.py
+class NewListTest(TestCase):
+    [...]
+    
+    def test_validation_errors_are_sent_back_to_home_page_template(self):
+        response = self.client.post("/lists/new", data={"text":""})
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "home.html")
+        expected_error = escape("You can't have an empty list item")
+        self.assertContains(response, expected_error)
+```
+
+#### 11.3.1 修改 `new_list` 视图的单元测试
+
+首先，这个测试方法测试的内容太多了。我们应该把这个测试方法分成两个不同的断言：
+
+* 如果有验证错误，应该渲染首页模板，并且返回 200 响应
+* 如果有验证错误，响应中应该包含错误信息
+
+此外，还可以添加一个新断言：
+
+* 如果有验证错误，应该把表单对象传入模板
+
+不用硬编码错误消息字符串，而要使用一个常量：
+
+```python
+# test_views.py
+from lists.forms import ItemForm, EMPTY_LIST_ERROR
+[...]
+
+class NewListTest(TestCase):
+    [...]
+    
+    def test_for_invalid_input_renders_home_template(self):
+        response = self.client.post("/lists/new", data={"text": ""})
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "home.html")
+
+    def test_validation_errors_are_shown_on_home_page(self):
+        response = self.client.post("/lists/new", data={"text": ""})
+        self.assertContains(response, escape(EMPTY_LIST_ERROR))
+
+    def test_for_invalid_input_passes_form_to_template(self):
+        response = self.client.post("/lists/new", data={"text": ""})
+        self.assertIsInstance(response.context["form"], ItemForm)
+```
+
+现在好多了，每个测试方法只测试一件事。如果幸运的话，只有一个测试会失败，而且会告诉我们接下来做什么：
+
+```shell
+python3 manage.py test lists
+```
+
+#### 11.3.2 在视图中使用这个表单
+
+```python
+# views.py
+def new_list(request):
+    # 把 request.POST 中的数据传给表单的构造方法
+    form = ItemForm(data=request.POST)
+
+    # 使用 form.is_valid() 判断提交是否成功
+    if form.is_valid():
+        list_ = List.objects.create()
+        Item.objects.create(text=request.POST["text"], list_attr=list_)
+        return redirect(list_)
+    else:
+        # 如果提交失败，把表单对象传入模板，而不显示一个硬编码的错误消息字符串
+        return render(request, "home.html", {"form": form})
+```
+
+#### 11.3.3 使用这个表单在模板中显示错误消息
+
+测试失败的原因是模板还没使用这个表单显示错误消息：
+
+```html
+<!-- base.html -->
+<form method="POST" action="{% block form_action %}{% endblock %}">
+  {{ form.text }}
+  {% csrf_token %}
+  {% if form.erros %} <!-- form.errors 是一个列表，包含这个表单中的所有错误 -->
+  <div class="form-group has-error"> 
+    <div class="help-block">
+      {{ form.text.errors }}<!-- form.text.erros 也是一个列表，但只包含 text 字段的错误 -->
+    </div>
+  </div>
+  {% endif %}
+</form>
+```
+
+这样修改之后，失败发生在针对最后一个视图 `view_list` 的测试中。因为我们修改了错误在模板中显示的方式，不再显示手动传入模板的错误。
+
+因此，还要修改 `view_list` 视图才能重新回到可运行状态。
+
+### 11.4 在其他视图中使用这个表单
+
+`view_list` 视图既可以处理 GET 请求也可以处理 POST 请求。先测试 GET 请求，为此，可以编写一个新测试方法：
+
+```python
+# test_views.py
+class ListViewTest(TestCase):
+    [...]
+    
+    def test_displays_item_form(self):
+        list_ = List.objects.create()
+        response = self.client.get("/lists/{}/".format(list_.id))
+        self.assertIsInstance(response.context["form"], ItemForm)
+        self.assertContains(response, 'name="text"')
+```
+
+解决这个问题最简单的方法如下：
+
+```python
+# views.py
+def view_list(request, list_id):
+    [...]
+    
+    form = ItemForm()
+    return render(request, "list.html", {
+      "list":list_, "form":form, "error":error
+    })
+```
+
+接下来要在另一个视图中使用这个表单的错误消息，把当前针对表单提交失败的测试（`test_validation_errors_end_up_on_lists_page`）分成多个测试方法：
+
+```python
+class ListViewTest(TestCase):
+    [...]
+    
+    def post_invalid_input(self):
+        list_ = List.objects.create()
+        return self.client.post("/lists/{}/".format(list_.id), data={"text": ""})
+
+    def test_for_invalid_input_nothing_saved_to_db(self):
+        self.post_invalid_input()
+        self.assertEqual(Item.objects.count(), 0)
+
+    def test_for_invalid_input_renders_list_template(self):
+        response = self.post_invalid_input()
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "list.html")
+
+    def test_for_invalid_input_passes_form_to_template(self):
+        response = self.post_invalid_input()
+        self.assertIsInstance(response.context["form"], ItemForm)
+
+    def test_for_invalid_input_shows_error_on_page(self):
+        response = self.post_invalid_input()
+        self.assertContains(response, escape(EMPTY_LIST_ERROR))
+```
+
+我们定义了一个辅助方法 `post_invalid_input`，这样就不用在分拆的四个测试中重复编写代码了。
+
+现在，试试能否使用 ItemForm 表单重写视图。第一次尝试：
+
+```python
+# views.py
+def view_list(request, list_id):
+    list_ = List.objects.get(id=list_id)
+    form = ItemForm()
+    if request.method == "POST":
+        form = ItemForm(data=request.POST)
+        if form.is_valid():
+            Item.objects.create(text=request.POST["text"], list=list_)
+            return redirect(list_)
+    return render(request, "list.html", {"list_attr":list_, "form":form})
+```
+
+重写后，单元测试和功能测试都通过了。
+
+现在是提交的绝佳时刻：
+
+```shell
+git diff
+git commit -am "use form in all views, back to working state"
+```
+
+### 11.5 使用表单自带的 save 方法
+
+我们还可以进一步简化视图。表单可以把数据存入数据库。我们遇到的情况并不能直接保存数据，因为需要知道把待办事项保存到哪个清单中。
+
+先编写测试，先看一下如果直接调用 `form.save()` 会发生什么：
+
+```python
+# test_forms.py
+def test_form_save_handles_saving_to_a_list(self):
+    form = ItemForm(data={"text":"do me"})
+    new_item = form.save()
+```
+
+Django 报错了，因为待办事项必须隶属于某个清单。
+
+这个问题的解决办法是告诉表单的 save 方法，应该把待办事项保存到哪个清单中：
+
+```python
+from lists.models import Item, List
+[...]
+
+    def test_form_save_handles_saving_to_a_list(self):
+        list_ = List.objects.create()
+        form = ItemForm(data={"text":"do me"})
+        new_item = form.save(for_list=list_)
+        self.assertEqual(new_item, Item.objects.first())
+        self.assertEqual(new_item.text, "do me")
+        self.assertEqual(new_item.list_attr, list_)
+```
+
+然后，要保证待办事项能顺利存入数据库，而且各个属性的值都正确，可以定制 save 方法，实现方式如下：
+
+```python
+# forms.py
+    def save(self, for_list):
+        self.instance.list_attr = for_list
+        return super().save()
+```
+
+ 表单的 `.instance` 属性是将要修改或创建的数据库对象。此外还有很多方法，例如自己手动创建数据库对象，或者调用 `save()` 方法时指定参数 `commit=False`，但作者觉得使用 `.instance` 属性最简洁。
+
+最后，要重构视图。先重构 `new_list`：
+
+```python
+# views.py
+def new_list(request):
+    form = ItemForm(data=request.POST)
+    if form.is_valid():
+        list_ = List.objects.create()
+        form.save(for_list=list_)
+        return redirect(list_)
+   	else:
+        return render(request, "home.html", {"form": form})
+```
+
+然后运行测试，确保都能通过。接着重构 `view_list`：
+
+```python
+# views.py
+def view_list(request, list_id):
+    list_ = List.objects.get(id=list_id)
+    form = ItemForm()
+
+    if request.method == "POST":
+        form = ItemForm(data=request.POST)
+        if form.is_valid():
+            form.save(for_list=list_)
+            return redirect(list_)
+    return render(reuqest, "list.html", {"list":list_, "form":form})
+```
+
+修改之后，单元测试和功能测试都能通过。
+
+现在这两个视图更像是“正常的” Django 视图了：从用户的请求中读取数据，结合一些定制的逻辑或 URL 中的信息(`list_id`)，然后把数据传入表单进行验证，如果通过验证就能保存数据，最后重定向或者渲染模板。
+
+> 小贴士
+>
+> * 简化视图
+>
+>   如果发现视图很复杂，要编写很多测试，这时候就应该考虑是否能把逻辑移到其他地方。可以移到表单中。或者可以移到模型类的自定义方法中。如果应用本身就很复杂，可以把核心业务逻辑移到 Django 专属的文件之外，编写单独的类和函数
+>
+> * 一个测试只测试一件事
+>
+>   如果一个测试中不止一个断言，你就要怀疑这么写是否合理。有时候断言之间联系紧密，可以放在一起。不过第一次编写测试时往往都会测试很多表现，其实应该把它们分成多个测试。辅助函数有助于简化拆分后的测试。
