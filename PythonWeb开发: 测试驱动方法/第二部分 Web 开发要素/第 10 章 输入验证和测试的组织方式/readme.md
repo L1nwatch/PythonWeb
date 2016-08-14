@@ -724,3 +724,4 @@ git commit -am "Use get_absolute_url on List model to DRY urls in views"
 >   * 如果测试的对象还没实现，可以先在测试方法加上 @skip 修饰器
 >   * 更一般的做法是，记下想重构的地方，完成手头上的活，等应用处于可正常运行的状态时再重构
 >   * 提交代码之前别忘了删掉所有 @skip 修饰器！你应该始终逐行审查差异，找出这种问题。
+
