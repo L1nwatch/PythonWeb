@@ -547,3 +547,158 @@ git commit -am "Refactor list view to handle new item POSTs"
 
 #### 10.4.2 在 `view_list` 视图中执行模型验证
 
+把待办事项添加到现有清单时，我们希望保存数据时仍能遵守制定好的模型验证规则。为此要编写一个新单元测试，和首页的单元测试差不多：
+
+```python
+class ListViewTest(TestCase):
+    [...]
+    
+    def test_validation_erros_end_up_on_lists_page(self):
+        """
+        测试在一个清单上添加一个空项目
+        :return:
+        """
+        list_ = List.objects.create()
+        response = self.client.post("/lists/{}/".format(list_.id), data={"item_text": ""})
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "list.html")
+        expected_error = escape("You can't have an empty list item")
+        self.assertContains(response, expected_error)
+```
+
+这个测试应该失败，因为视图现在还没做任何验证，只是重定向所有 POST 请求。
+
+在视图中执行验证的方法如下：
+
+```python
+# views.py
+def view_list(request, list_id):
+    list_ = List.objects.get(id=list_id)
+    error = None
+
+    if request.method == "POST":
+        try:
+            # 注意这里不是 Item.objects.create()
+            item = Item(text=request.POST["item_text"], list_attr=list_)
+            item.full_clean()
+            item.save()
+            return redirect("/lists/{}/".format(list_.id))
+        except ValidationError:
+            error = "You can't have an empty list item"
+    return render(request, "list.html", {"list_attr": list_, "error": error})
+```
+
+这里确实有一些重复的代码，views.py 中出现了两次 `try/except` 语句，一般来说不好看。
+
+进行测试，测试通过了。
+
+> 制定“事不过三，三则重构”这个规则的原因之一是，只有遇到三次且每次都稍有不同时，才能更好地提炼出通用功能。如果过早重构，得到的代码可能并不适用于第三次。
+
+这里功能测试又可以通过了。
+
+又回到了可正常运行的状态，因此可以提交了。
+
+```shell
+git commit -am "enforce model validation in list view"
+```
+
+### 10.5 重构：去除硬编码的 URL
+
+还记得 urls.py 中 name= 参数的写法么？直接从 Django 生成的默认 URL 映射中复制过来，然后又给它们起了有意义的名字。现在要查明这些名字有什么用。
+
+```python
+# urls.py
+url(r"^(\d+)/$", "lists.views.view_list", name="view_list"),
+url(r"^new$", "lists.views.new_list", name="new_list")
+```
+
+#### 10.5.1 模板标签 `{% url %}`
+
+可以把 home.html 中硬编码的 URL 换成一个 Django 模板标签，再引用 URL 的“名字”：
+
+```html
+{% block form_action %}{% url "new_list" %}{% endblock %}
+```
+
+然后确认改动之后不会导致单元测试失败。
+
+继续修改其他模板。传入了一个参数的这个：
+
+```html
+{% block form_action %}{% url "view_list" list_attr.id %}{% endblock %}
+```
+
+详情阅读 Django 文档中对 URL 反向解析的[介绍](https://docs.djangoproject.com/en/1.7/ topics/http/urls/#reverse-resolution-of-urls)。再次运行测试，确保都能通过。
+
+之后就做次提交吧：
+
+```shell
+git commit -am "Refactor hard-coded URLs out of templates"
+```
+
+#### 10.5.2 重定向时使用 `get_absolute_url`
+
+下面处理 views.py。在这个文件中去除硬编码的 URL，可以使用和模板一样的方法——写入 URL 的名字和一个位置参数。
+
+```python
+def new_list(request):
+    [...]
+    return redirect("view_list", list_.id)
+```
+
+修改之后单元测试和功能测试仍能通过，但是 redirect 函数的作用远比这强大。在 Django 中，每个模型对象都对应一个特定的 URL，因此可以定义一个特殊的函数，命名为 `get_absolute_url`，其作用是获取显示单个模型对象的页面 URL。这个函数在这里很有用，在 Django 管理后台也很有用：在后台查看一个对象时可以直接跳到前台显示该对象的页面。如果有必要，总是建议在模型中定义 `get_absolute_url` 函数。
+
+先在 `test_models.py` 中编写一个单元测试：
+
+```python
+# test_models.py
+def test_get_absolute_url(self):
+    list_ = List.objects.create()
+    self.assertEqual(list_.get_absolute_url(), "/lists/{}".format(list_.id))
+```
+
+测试失败。
+
+实现这个函数时要使用 Django 中的 reverse 函数。reverse 函数的功能和 Django 对 urls.py 所做的操作相反，[参见文档](https://docs.djangoproject.com/en/1.7/topics/http/ urls/#reverse-resolution-of-urls)。
+
+```python
+# models.py
+from django.core.urlresolvers import reverse
+
+class List(models.Model):
+    def get_absolute_url(self):
+        return reverse("view_list", args=[self.id])
+```
+
+现在可以在视图中使用 `get_absolute_url` 函数了，只需把重定向的目标对象传给 `redirect` 函数即可，`redirect` 函数会自动调用 `get_absolute_url` 函数（**个人实践：函数名固定得是 `get_absolute_url`，要不然测试通不过**）。
+
+```python
+# views.py
+def new_list(request):
+    [...]
+    return redirect(list_)
+```
+
+更多信息参见 [Django 文档](https://docs.djangoproject.com/en/1.7/topics/http/shortcuts/#redirect)。可以确认一下单元测试是否仍能通过。
+
+然后使用同样的方法修改 `view_list` 视图：
+
+```python
+# views.py
+def view_list(request, list_id):
+    [...]
+    
+    	item.save()
+        return redirect(list_)
+    except ValidationError:
+        error = "..."
+```
+
+分别运行全部单元测试和工嗯呢该测试，确保一切仍能正常工作。
+
+之后就可以做一次提交了：
+
+```shell
+git commit -am "Use get_absolute_url on List model to DRY urls in views"
+```
+
