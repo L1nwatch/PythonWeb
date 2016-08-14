@@ -185,3 +185,161 @@ git add lists
 git commit -m "new form for list items"
 ```
 
+### 11.2 在视图中使用这个表单
+
+精益理论中的“尽早部署”有个推论，即“尽早合并代码”。也就是说，编写表单可能要花很多时间，不断添加各种功能——做了各种工作，得到一个功能完善的表单类，但发布应用后才发现大多数功能实际并不需要。
+
+因此，要尽早使用新编写的代码。这么做能避免编写用不到的代码，还能尽早在现实的环境中检验代码。
+
+编写一个表单类，它可以渲染一些 HTML，而且至少能验证一种错误。既然可以在 base.html 模板中使用这个表单，那么在所有视图中都可以使用。
+
+#### 11.2.1 在处理 GET 请求的视图中使用这个表单
+
+首先修改视图的单元测试，使用 Django 测试客户端编写两个新测试代替原来的 `test_home_page_returns_correct_html` 和 `test_root_url_resolves_to_home_page_view`。但先不删除这两个旧测试方法，以便确保新编写的测试和旧测试等效：
+
+```python
+# test_views.py
+from lists.forms import ItemForm
+
+class HomePageTest(TestCase):
+    def test_root_url_resolves_to_home_page_view(self):
+        [...]
+        
+    def test_home_page_returns_correct_html(self):
+        request = HttpRequest()
+        [...]
+        
+    def test_home_page_renders_home_template(self):
+        response = self.client.get("/")
+        self.assertTemplateUsed(response, "home.html") # 使用辅助方法 assertTemplateUsed 替换之前手动测试模板的 diamante
+        
+    def test_home_page_uses_item_form(self):
+        response = self.client.get("/")
+        self.assertIsInstance(response.context["form"], ItemForm) # 使用 assertIsInstance 确认视图使用的是正确的表单类
+```
+
+测试结果为 `KeyError`。
+
+因此，要在首页视图中使用这个表单：
+
+```python
+# views.py
+from lists.forms import ItemForm
+from lists.models import Item, List
+
+def home_page(request):
+    return render(request, "home.html", {"form": ItemForm()})
+```
+
+下面尝试在模板中使用这个表单——把原来的 `<input ..>` 替换成 `{{ form.text }}`：
+
+```html
+<!-- base.html -->
+<form method="POST" action="{% block form_action %}{% endblock %}">
+  {{ form.text }}
+  {% csrf_token %}
+  <div class="form-group has-error">
+    ...
+  </div>
+</form>
+```
+
+`{{ form.text }}` 只会渲染这个表单中的 text 字段，生成 HTML input 元素。
+
+现在，那两个旧测试过时了。但是失败消息不易读，把它变得清晰一些：
+
+```python
+# test_views.py
+class HomePageTest(TestCase):
+    maxDiff = None # 默认情况下会解决较长的差异，需要进行设置
+    [...]
+    def test_home_page_returns_correct_html(self):
+        request = HttpRequest()
+        response = home_page(request)
+        expected_html = render_to_string("home.html")
+# 对比长字符串时 assertMultiLineEqual 很有用，它会以差异的格式显示输出
+        self.assertMultiLineEqual(response.content.decode(), excepted_html)
+```
+
+再次测试，可以看到测试失败的原因是 `render_to_string` 函数不知道怎么处理表单。
+
+可以修正这个问题：
+
+```python
+# test_views.py
+def test_home_page_returns_correct_html(self):
+    request = HttpRequest()
+    response = home_page(request)
+    expected_html = render_to_string("home.html", {"form": ItemForm()})
+    self.assertMultiLineEqual(response.content.decode(), expected_html)
+```
+
+修改之后测试又能通过了。确定添加新测试前后的表现一致后，可以删除那两个旧测试方法了。
+
+新测试方法中的 `assertTemplateUsed` 和 `response.context` 对一个处理 GET 请求的简单视图而言足够了。
+
+现在 HomePageTest 类中只有两个测试方法了。
+
+#### 11.2.2 大量查找和替换
+
+前面修改了表单，id 和 name 属性的值变了。运行功能测试时会看到，首次尝试查找输入框时测试失败了。
+
+得修正这个问题，为此需要大量查找和替换。在此之前先提交，把重命名和逻辑变动区分开。
+
+```shell
+git diff 
+git commit -am "use new form in home_page, simplify tests. NB breaks stuff"
+```
+
+下面来修正功能测试。通过 grep 命令可以得知，有很多地方都使用了 `id_new_item`。
+
+```shell
+grep id_new_item functional_tests/test*
+```
+
+这表明我们要重构。在 `base.py` 中定义一个新辅助办法：
+
+```python
+# base.py
+class FunctionalTest(StaticLiveServerCase):
+    [...]
+    def get_item_input_box(self):
+        return self.browser.find_element_by_id("id_text")
+```
+
+然后所有需要替换的地方都使用这个辅助方法——`test_simple_list_creation.py` 修改三处，`test_layout_and_styling.py` 修改两处，`test_list_item_validation.py` 修改四处。
+
+第一步完成了，接下来还要修改应用代码。要找到所有旧的 id(`id_new_item`) 和 name(`item_text`)，分别替换成 `id_text` 和 text：
+
+```shell
+grep -r id_new_item lists/
+```
+
+只要改动一处，使用类似的方法查看 name 出现的位置：
+
+```shell
+grep -Ir item_text lists
+```
+
+改完之后再运行单元测试及功能测试，确保一切仍能正常运行。
+
+不能通过功能测试，确认一下发生错误的位置——查看其中一个失败所在的行号，会发现，每次提交第一个待办事项后，清单页面都不会显示输入框。
+
+查看 views.py 和 `new_list` 视图后找到了原因——如果检测到有验证错误，根本就不会把表单传入 `home.html` 模板：
+
+```python
+# views.py
+except ValidationError:
+    error = "You can't have an empty list item"
+    return render(request, "home.html", {"error":error})
+```
+
+我们也想在这个视图中使用 ItemForm 表单。继续修改之前，先提交：
+
+```shell
+git status
+git commit -am "rename all item input ids and names. still broken"
+```
+
+### 11.3 在处理 POST 请求的视图中使用这个表单
+
