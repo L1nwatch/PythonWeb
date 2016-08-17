@@ -287,20 +287,101 @@ class ExistingListItemFormTest(TestCase):
         list_ = List.objects.create()
         form = ExistingListItemForm(for_list=list_)
         self.assertIn('placeholder="Enter a to-do item"', form.as_p())
-        
+
     def test_form_validation_for_blank_items(self):
         list_ = List.objects.create()
-        form = ExistingListItemForm(for_list=list_, data={"text":""})
+        form = ExistingListItemForm(for_list=list_, data={"text": ""})
         self.assertFalse(form.is_valid())
         self.assertEqual(form.errors["text"], [EMPTY_LIST_ERROR])
-        
+
     def test_form_validation_for_duplicate_items(self):
         list_ = List.objects.create()
-        Item.objects.create(list=list_, text="no twins!")
-        form = ExistingListItemForm(for_list=list_, data={"text":"no twins!"})
+        Item.objects.create(list_attr=list_, text="no twins!")
+        form = ExistingListItemForm(for_list=list_, data={"text": "no twins!"})
         self.assertFalse(form.is_valid())
         self.assertEqual(form.errors["text"], [DUPLICATE_ITEM_ERROR])
 ```
+
+要经历几次 TDD 循环，最终得到了这么一个构造方法：
+
+```python
+# forms.py
+DUPLICATE_ITEM_ERROR = "You've already got this in your list"
+[...]
+class ExistingListItemForm(forms.models.ModelForm):
+    def __init__(self, for_list, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+```
+
+测试的结果为：
+
+```python
+ValueError: ModelForm has no model class specified.
+```
+
+现在，让这个表单继承现有的表单，看测试能不能通过：
+
+```python
+class ExistingListItemForm(ItemForm):
+    def __init__(self, for_list, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+```
+
+现在只剩下一个测试失败了。接下来了解一点 Django 内部运作机制。你可以阅读 Django 文档中对[模型验证](https://docs.djangoproject.com/en/1.7/ref/models/instances/#validating-objects)和[表单验证](https://docs.djangoproject.com/en/1.7/ref/forms/validation/)的介绍了解。
+
+Django 在表单和模型中都会调用 `validate_unique` 方法，借助 instance 属性在表单的 `validate_unique` 方法中调用模型的 `validate_unique` 方法：
+
+```python
+# forms
+from django.core.exceptions import ValidationError
+[...]
+
+class ExistingListItemForm(ItemForm):
+    def __init__(self, for_list, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.instance.list = for_list
+
+    def validate_unique(self):
+        try:
+            self.instance.validate_unique()
+		except ValidationError as e:
+                e.error_dict = {"text":[DUPLICATE_ITEM_ERROR]}
+                self._update_errors(e)
+```
+
+这段代码先获取验证错误，修改错误消息之后再把错误传回表单。任务完成，做个简单的提交：
+
+```shell
+git diff
+git commit -a
+```
+
+### 12.4 在清单视图中使用 `ExistingListItemForm`
+
+现在看一下能否在视图中使用这个表单。要删掉测试方法的 `@skip` 修饰器，与此同时还要使用常量清理测试。
+
+```python
+# test_views.py
+from lists.forms import (
+	DUPLICATE_ITEM_ERROR, EMPTY_LIST_ERROR,
+    ExistingListItemForm, ItemForm,
+)
+[...]
+
+def test_duplicate_item_validation_errors_end_up_on_lists_page(self):
+    [...]
+    expected_error = escape(DUPLICATE_ITEM_ERROR)
+```
+
+修改之后完整性错误又出现了：
+
+```python
+
+```
+
+
+
+
 
 
 
