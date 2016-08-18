@@ -17,3 +17,4 @@
         * [第 10 章 输入验证和测试的组织方式](PythonWeb开发: 测试驱动方法/第二部分 Web 开发要素/第 10 章 输入验证和测试的组织方式/readme.md)
         * [第 11 章 简单的表单](PythonWeb开发: 测试驱动方法/第二部分 Web 开发要素/第 11 章 简单的表单/readme.md)
         * [第 12 章 高级表单](PythonWeb开发: 测试驱动方法/第二部分 Web 开发要素/第 12 章 高级表单/readme.md)
+        * [第 13 章 试探 JavaScript](PythonWeb开发: 测试驱动方法/第二部分 Web 开发要素/第 13 章 试探 JavaScript/readme.md)
