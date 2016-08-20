@@ -42,3 +42,87 @@ def get_error_element(self):
 在 Python 和 Django 领域中选择测试工具非常简单。标准库中的 unittest 模块完全够用了，而且 Django 测试运行程序也是一个不错的默认选择。除此之外，还有一些替代工具，比如 nose 很受欢迎。另外作者对 pytest 的印象比较深刻。不过默认选项很不错，已能满足要求。
 
 在 JavaScript 领域，情况就不一样了。在工作中使用 YUI，但应该看看有没有其他新推出的工具。有很多的选项——jsUnit、Qunit、Mocha、Chutzpah、Karma、Testacular、Jasmine 等。而且还不仅仅局限于此：几乎选中其中一个工具后，还得选择一个断言框架和报告程序，或许还要选择一个模拟技术库。
+
+最终，决定使用 [QUnit](http://qunitjs.com/)，因为它简单，而且能很好地和 jQuery 配合使用。
+
+在 `lists/static` 中新建一个目录，将其命名为 tests，把 QUnit JavaScript 和 CSS 两个文件下载到该目录，如果必要的话，去掉文件名中的版本号。还要在该目录中放入一个 `test.html` 文件：
+
+```shell
+tree lists/static/tests/
+|--- qunit.css
+|--- qunit.js
+|___ tests.html
+```
+
+QUnit 的 HTML 样板文件内容如下，其中包含一个冒烟测试：
+
+```html
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Javascript tests</title>
+    <link rel="stylesheet" href="qunit.css">
+  </head>
+  
+  <body>
+    <div id="qunit">
+      <div id="qunit-fixture">
+        <script src="qunit.js"></script>
+        <script>
+          /* global $, test, equal */
+          
+          test("smoke test", function() {
+            equal(1, 1, "Maths works!");
+          });
+        </script>
+      </div>
+    </div>
+  </body>
+</html>
+```
+
+仔细分析这个文件时，要注意几个重要的问题：使用第一个 `<script>` 标签引入 `qunit.js`，然后在第二个 `<script>` 标签中编写测试的主体。
+
+> 写 /* global 这行注释，是因为作者正在使用一种名为 jslint 的工具，它集成在作者的编辑器中，是 JavaScript 句法检查程序。这行注释告诉 jslint 期望的全局变量是什么，这对代码本身并不重要，所以不担心。推荐了解一下这种 JavaScript 工具，例如 jslint 和 jshint，它们很有用，能防止你落入常见的 JavaScript 陷阱。
+
+试试在 Web 浏览器中打开这个文件（不用运行开发服务器，在硬盘中找到这个文件即可）。
+
+查看测试代码会发现，和我们目前编写的 Python 测试有很多相似之处：
+
+```javascript
+test("smoke test", function () { // test 函数定义一个测试用例，有点儿类似 Python 中的 def test_something(self)。test 函数的第一个参数是测试名，第二个参数是一个函数，定义这个测试的主体。
+equal(1, 1, "Maths works!"); // equal 函数是一个断言，和 assertEqual 非常像，比较两个参数的值。不过，和在 Python 中不同的是，不管失败还是通过都会显示消息，所以消息应该使用肯定式而不是否定式。
+})
+```
+
+### 13.3 使用 jQuery 和 `<div>` 固件元素
+
+接下来熟悉一下这个测试框架能做什么，也开始使用一些 jQuery。
+
+下面在脚本中加入 `jQuery`，以及测试中要使用的几个元素：
+
+```html
+<div id="qunit-fixture"></div>
+
+<form> <!-- form 及其中的内容放在那儿是为了表示真实的清单页面中的内容 -->
+  <input name="text" />
+  <div class="has-error">
+    Error text
+  </div>
+</form>
+
+<script src="http://code.jquery.com/jquery.min.js"></script>
+<script src="qunit.js"></script>
+<script>
+/* global $, test, equal */
+
+test("smoke test", function () {
+  equal($(".has-error").is(":visible"), true); /* jQuery 开始，$ 是 jQuery 用来查找 DOM 中的内容。$ 的第一个参数是 CSS 选择符，要查找类为 "error" 的所有元素。查找得到的结果是一个对象，表示一个或多个 DOM 元素。然后，可以在这个对象上使用很多有用的方法处理或者查看这些元素。 */ /* 其中一个方法是 .is，它的作用是指出某个元素的表现是否和指定的 CSS 属性匹配。这里使用 :visible 检查元素是否显示出来。 */
+  $(".has-error").hide(); /* 使用 jQuery 提供的 .hide() 方法隐藏这个 <div> 元素。其实，这个方法是在元素上动态设定 style="display: none" 属性。 */
+  equal($(".has-error").is(":visible"), false); /* 最后，使用第二个 equal 断言检查隐藏是否成功。 */
+});
+</script>
+```
+
+刷新浏览器后应该会看到所有测试都通过了。
