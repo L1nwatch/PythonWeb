@@ -66,8 +66,8 @@ QUnit 的 HTML 样板文件内容如下，其中包含一个冒烟测试：
   </head>
   
   <body>
-    <div id="qunit">
-      <div id="qunit-fixture">
+    <div id="qunit"></div>
+    <div id="qunit-fixture">
         <script src="qunit.js"></script>
         <script>
           /* global $, test, equal */
@@ -76,7 +76,6 @@ QUnit 的 HTML 样板文件内容如下，其中包含一个冒烟测试：
             equal(1, 1, "Maths works!");
           });
         </script>
-      </div>
     </div>
   </body>
 </html>
@@ -100,29 +99,77 @@ equal(1, 1, "Maths works!"); // equal 函数是一个断言，和 assertEqual �
 
 接下来熟悉一下这个测试框架能做什么，也开始使用一些 jQuery。
 
-下面在脚本中加入 `jQuery`，以及测试中要使用的几个元素：
+下面在脚本中加入 `jQuery`，以及测试中要使用的几个元素（自己使用的版本是 2 版本以上，原书中的 `test` 等方法已过时：
 
 ```html
-<div id="qunit-fixture"></div>
+    <div id="qunit-fixture"></div>
 
-<form> <!-- form 及其中的内容放在那儿是为了表示真实的清单页面中的内容 -->
-  <input name="text" />
-  <div class="has-error">
-    Error text
-  </div>
-</form>
+    <form> <!-- form 及其中的内容放在那儿是为了表示真实的清单页面中的内容 -->
+        <input name="text"/>
+        <div class="has-error">
+            Error text
+        </div>
+    </form>
 
-<script src="http://code.jquery.com/jquery.min.js"></script>
-<script src="qunit.js"></script>
+    <script src="http://code.jquery.com/jquery.min.js"></script>
+    <script src="qunit.js"></script>
+    <script>
+        /* global $, test, equal */
+
+    QUnit.test("smoke test1", function (assert) {
+        // $("#has-error").show();
+        assert.equal($('.has-error').is(':visible'), true, "Not hidden");
+        /* jQuery 开始，$ 是 jQuery 用来查找 DOM 中的内容。$ 的第一个参数是 CSS 选择符，要查找类为 "error" 的所有元素。查找得到的结果是一个对象，表示一个或多个 DOM 元素。然后，可以在这个对象上使用很多有用的方法处理或者查看这些元素。 */
+        /* 其中一个方法是 .is，它的作用是指出某个元素的表现是否和指定的 CSS 属性匹配。这里使用 :visible 检查元素是否显示出来。 */
+        $('.has-error').hide();
+        /* 使用 jQuery 提供的 .hide() 方法隐藏这个 <div> 元素。其实，这个方法是在元素上动态设定 style="display: none" 属性。 */
+        assert.equal($('.has-error').is(':visible'), false, "Hidden");
+        /* 最后，使用第二个 equal 断言检查隐藏是否成功。 */
+    });
+    </script>
+```
+
+注意，equal 的用法跟书中的不一样，具体[参考](http://stackoverflow.com/questions/8337186/jquery-isvisible-not-working-in-chrome)。刷新浏览器后应该会看到所有测试都通过了。
+
+下面要介绍如何使用固件（fixture）：
+
+> QUnit 中的测试不会按照既定的顺序运行，所以不要觉得第一个测试一定会在第二个测试之前运行。
+
+我们需要一种方法在测试之间执行清理工作，有点儿类似于 setUp 和 tearDown，或者像 Django 测试运行程序一样，运行完每个测试后还原数据库。id 为 `qunit-fixture` 的 `<div>` 元素就是我们正在寻找的方法。把表单移到这个元素中：
+
+```html
+<div id="qunit"></div>
+  <div id=qunit-fixture>
+    <form>
+      <input name="text" />
+      <div class="has-error">
+        Error text
+      </div>
+    </form>
+</div>
+```
+
+每次运行测试前，jQuery 都会还原这个固件元素中的内容。因此，两个测试都能通过了。
+
+### 为想要实现的功能编写 JavaScript 单元测试
+
+现在我们已经熟悉这个 JavaScript 测试工具了，所以可以只留下一个测试，开始编写真正的测试代码了：
+
+```html
 <script>
-/* global $, test, equal */
-
-test("smoke test", function () {
-  equal($(".has-error").is(":visible"), true); /* jQuery 开始，$ 是 jQuery 用来查找 DOM 中的内容。$ 的第一个参数是 CSS 选择符，要查找类为 "error" 的所有元素。查找得到的结果是一个对象，表示一个或多个 DOM 元素。然后，可以在这个对象上使用很多有用的方法处理或者查看这些元素。 */ /* 其中一个方法是 .is，它的作用是指出某个元素的表现是否和指定的 CSS 属性匹配。这里使用 :visible 检查元素是否显示出来。 */
-  $(".has-error").hide(); /* 使用 jQuery 提供的 .hide() 方法隐藏这个 <div> 元素。其实，这个方法是在元素上动态设定 style="display: none" 属性。 */
-  equal($(".has-error").is(":visible"), false); /* 最后，使用第二个 equal 断言检查隐藏是否成功。 */
-});
+    /* global $, test, equal */
+    QUnit.test("errors should be hidden on keypress", function (assert) {
+        $('input').trigger('keypress'); // jQuery 提供的 .trigger 方法主要用于测试，作用是在指定的元素上触发一个 JavaScript DOM 事件。这里使用的是 keypress 事件，当用户在指定的输入框中输入内容时，浏览器就会触发这个事件。
+        assert.equal($('.has-error').is(':visible'), false);
+    });
 </script>
 ```
 
-刷新浏览器后应该会看到所有测试都通过了。
+> 这里 jQuery 隐藏了很多复杂的细节。不同浏览器之间处理事件的方式大不一样，详情可以参考[Quirksmode.org](http://www.quirksmode.org/dom/events/)。jQuery 之所以这么受欢迎就是因为它消除了这些差异。
+
+这个测试将会失败。
+
+假设我们想把代码放在单独的 JavaScript 文件中，命名为 `list.js`。
+
+
+
