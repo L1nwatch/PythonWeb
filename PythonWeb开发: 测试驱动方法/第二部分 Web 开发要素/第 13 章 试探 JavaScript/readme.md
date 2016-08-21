@@ -171,5 +171,181 @@ equal(1, 1, "Maths works!"); // equal 函数是一个断言，和 assertEqual �
 
 假设我们想把代码放在单独的 JavaScript 文件中，命名为 `list.js`。
 
+```html
+<!-- static/tests/tests.html -->
+<script src="qunit.js"></script>
+<script src="../list.js"></script>
+<script>
+  ...
+```
 
+若想让这个测试通过，所需的最简代码如下所示：
 
+```javascript
+// static/list.js
+$('.has-error').hide();
+```
+
+显然还有个问题，最好再添加一个测试：
+
+```html
+<!-- static/tests/tests.html -->
+<script src="../list.js"></script>
+<script>
+    /* global $, test, equal */
+    QUnit.test("errors should be hidden on keypress", function (assert) {
+        $('input').trigger('keypress'); // jQuery 提供的 .trigger 方法主要用于测试，作用是在指定的元素上触发一个 JavaScript DOM 事件。这里使用的是 keypress 事件，当用户在指定的输入框中输入内容时，浏览器就会触发这个事件。
+        //$('.has-error').hide();
+        assert.equal($('.has-error').is(':visible'), false);
+    });
+
+    QUnit.test("errors not be hidden unless there is a keypress", function (assert) {
+        assert.equal($('.has-error').is(':visible'), true);
+    });
+</script>
+```
+
+得到一个预期的失败。然后，可以使用一种更真实的实现方式：
+
+```javascript
+// static/list.js
+$('input').on('keypress', function() { // 查找所有 input 元素，然后在找到的每个元素上附属一个事件监听器，作用在 keypress 事件上。事件监听器是那个行间函数，其作用是隐藏类为 .has-error 的所有元素
+	$('.has-error').hide();
+});
+```
+
+这段代码能让单元测试通过。
+
+接下来，在所有页面中都引入这个脚本和 jQuery ：
+
+```html
+</div>
+<script src="http://code.jquery.com/jquery.min.js"></script>
+<script src="/static/list.js"></script>
+</body>
+</html>
+```
+
+> 习惯做法是在 HTML 的 body 元素末尾引入脚本，因为这么做用户无须等到所有 JavaScript 都加载完才能看到页面中的内容。而且还能保证运行脚本前加载了大部分 DOM。
+
+然后运行功能测试，发现也通过了。
+
+```shell
+python3 manage.py test functional_tests.test_list_item_validation.ItemValidationTest.test_error_messages_are_messages_are_cleared_on_input
+```
+
+接下来可以做次提交了。
+
+#### 个人实践，由于所用版本与书中不同，以下是自己成功的版本：
+
+```html
+<!-- tests.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Javascript tests</title>
+    <link rel="stylesheet" href="qunit.css">
+</head>
+
+<body>
+<div id="qunit"></div>
+<div id="qunit-fixture">
+    <form> <!-- form 及其中的内容放在那儿是为了表示真实的清单页面中的内容 -->
+        <input name="text"/>
+        <div class="has-error">
+            Error Text
+        </div>
+    </form>
+</div>
+
+<script src="http://code.jquery.com/jquery.min.js"></script>
+<script src="qunit.js"></script>
+
+<script src="../list.js"></script>
+<script>
+    /* global $, test, equal */
+    QUnit.test("errors should be hidden on keypress", function (assert) {
+        $('input[name="text"]').trigger('keypress'); // jQuery 提供的 .trigger 方法主要用于测试，作用是在指定的元素上触发一个 JavaScript DOM 事件。这里使用的是 keypress 事件，当用户在指定的输入框中输入内容时，浏览器就会触发这个事件。
+        //$('.has-error').hide();
+        assert.equal($('.has-error').is(':visible'), false);
+    });
+
+    QUnit.test("errors not be hidden unless there is a keypress", function (assert) {
+        assert.equal($('.has-error').is(':visible'), true);
+    });
+</script>
+
+</body>
+</html>
+```
+
+```javascript
+// list.js
+var hide_error = function () {
+    $('input').on("keypress", function () {
+        $(".has-error").hide();
+    });
+};
+
+QUnit.module("module A ", {
+    before: hide_error
+});
+```
+
+但是注意着只是能通过 JavaScript 的单元测试，在 Python 的功能测试中依旧失败，还是得用书中给出的代码才能通过功能测试，郁闷了。
+
+### 13.5 JavaScript 测试在 TDD 循环中的位置
+
+JavaScript 测试在双重 TDD 循环中处于什么位置？答案是，JavaScript 测试和 Python 单元测试扮演的角色完全相同。
+
+1. 编写一个功能测试，看着它失败
+2. 判断接下来需要哪种代码，Python 还是 JavaScript？
+3. 使用选中的语言编写单元测试，看着它失败。
+4. 使用选中的语言编写一些代码，让测试通过。
+5. 重复上述步骤。
+
+### 13.6 经验做法：onload 样板代码和命名空间
+
+最后还有一件事。如果 JavaScript 需要和 DOM 交互，最好把相应的代码包含在 onload 样板代码中，确保在执行脚本之前完全加载了页面。目前的做法也能正常运行，因为我们把 `<script>` 标签放在页面的底部，但不能依赖这种方式。
+
+jQuery 提供的 onload 样板代码非常简洁：
+
+```javascript
+// static/list.js
+$(document).ready(function (){
+  $('input').on('keypress', function() {
+    $('.has-error').hide();
+  });
+});
+```
+
+此外，还使用了 jQuery 提供的神奇 $ 函数，但是其他 JavaScript 库可能也会使用这个名字。$ 其实是 jQuery 的别名，jQuery 这个名字在其他库很少会用到，所以更精确地控制命名空间的标准方法如下：
+
+```javascript
+jQuery(document).ready(function ($) {
+  $('input').on('keypress', function(){
+    $('.has-error').hide();
+  });
+});
+```
+
+更多信息请阅读 jQuery.read() 的[文档](http://api.jquery.com/ready/)。
+
+#### 个人实践
+
+```
+郁闷了,能通过单元测试的代码没法通过 Python 的功能测试, 能通过功能测试的代码没法通过单元测试. 后来我灵机一动, 两种方法都用上不就两个测试都能过了吗...这算啥- -, 现在提交的版本是两个都用上的版本
+```
+
+### 13.7 一些缺憾
+
+* 选择符 $(input) 的作用太大了，它为页面中所有的 input 元素都附上了事件句柄。
+* 目前，测试只检查 JavaScript 能否在一个页面中使用。JavaScript 能使用，是因为在 base.html 中引入了 JavaScript 文件。如果只在 home.html 中引入 JavaScript 文件，测试也能通过。你可以选择在哪个文件中引入，但也可以再编写一个测试。
+
+> ### JavaScript 测试笔记
+>
+> * Selenium 最大的优势之一是可以测试 JavaScript 是否真的能使用，就像测试 Python 代码一样。
+> * JavaScript 测试运行库有很多，QUnit 和 jQuery 联系紧密
+> * QUnit 主要希望你在真正的 Web 浏览器中运行测试，这就带来一个好处，可以方便地创建一些 HTML 固件，匹配网站中真正含有的 HTML，在测试中使用
+> * JavaScript 其实也可以很有趣。不过还是要再说一次：一定要阅读《JavaScript 语言精神》
