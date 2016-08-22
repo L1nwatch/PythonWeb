@@ -10,7 +10,7 @@
         * [第 4 章 编写这些测试有什么用](PythonWeb开发: 测试驱动方法/第一部分 TDD 和 Django 基础/第 4 章 编写这些测试有什么用/readme.md)
         * [第 5 章 保存用户输入](PythonWeb开发: 测试驱动方法/第一部分 TDD 和 Django 基础/第 5 章 保存用户输入/readme.md)
         * [第 6 章 完成最简可用的网站](PythonWeb开发: 测试驱动方法/第一部分 TDD 和 Django 基础/第 6 章 完成最简可用的网站/readme.md)
-    * [第二部分 Web 开发要素](PythonWeb开发: 测试驱动方法/第二部分 Web 开发要素/readme.md)]
+    * [第二部分 Web 开发要素](PythonWeb开发: 测试驱动方法/第二部分 Web 开发要素/readme.md)
         * [第 7 章 美化网站: 布局, 样式, 及其测试方法](PythonWeb开发: 测试驱动方法/第二部分 Web 开发要素/第 7 章 美化网站: 布局, 样式, 及其测试方法/readme.md)
         * [第 8 章 使用过渡网站测试部署](PythonWeb开发: 测试驱动方法/第二部分 Web 开发要素/第 8 章 使用过渡网站测试部署/readme.md)
         * [第 9 章 使用 Fabric 自动部署](PythonWeb开发: 测试驱动方法/第二部分 Web 开发要素/第 9 章 使用 Fabric 自动部署/readme.md)
@@ -18,3 +18,6 @@
         * [第 11 章 简单的表单](PythonWeb开发: 测试驱动方法/第二部分 Web 开发要素/第 11 章 简单的表单/readme.md)
         * [第 12 章 高级表单](PythonWeb开发: 测试驱动方法/第二部分 Web 开发要素/第 12 章 高级表单/readme.md)
         * [第 13 章 试探 JavaScript](PythonWeb开发: 测试驱动方法/第二部分 Web 开发要素/第 13 章 试探 JavaScript/readme.md)
+        * [第 14 章 部署新代码](PythonWeb开发: 测试驱动方法/第二部分 Web 开发要素/第 14 章 部署新代码/readme.md)
+    * [第三部分 高级话题](PythonWeb开发: 测试驱动方法/第三部分 高级话题/readme.md)
+        * [第 15 章 ]
