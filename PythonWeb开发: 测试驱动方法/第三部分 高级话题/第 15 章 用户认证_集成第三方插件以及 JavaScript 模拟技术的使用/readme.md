@@ -49,22 +49,69 @@ git checkout -b persona-spike
 <script src="/static/list.js"></script>
 <script src="https://login.persona.org/include.js"></script>
 <script>
-$(document).ready(function() {
-  var loginLink = document.getElementById("login");
-  if(loginLink){
-    loginLink.onclick = function()
- { navigator.id.request();};
-  }
-})
+    $(document).ready(function () {
+        var loginLink = document.getElementById("login");
+        if (loginLink) {
+            loginLink.onclick = function () {
+                navigator.id.request();
+            };
+        }
 
-var logoutLink{ = document.getElementById("logout")l
-if(logoutLink){
-  logoutLink.onclick = function(){
-    navigator.id.logout();
-  };
-}
-               
-               var currentUser = '{{ user.email }}' || null;
+
+        var logoutLink = document.getElementById("logout");
+
+        if (logoutLink) {
+            logoutLink.onclick = function () {
+                navigator.id.logout();
+            };
+        }
+
+        var currentUser = '{{ user.email }}' || null;
+
+        var cstf_token = '{{ csrf_token }}';
+        console.log(currentUser);
+
+        navigator.id.watch({
+            loggedInUser: currentUser,
+            onlogin: function (assertion) {
+                $.post('/accounts/login', {assertion: assertion, csrfmiddlewaretoken: csrf_token})
+                        .done(function () {
+                            window.location.reload();
+                        })
+                        .fail(function () {
+                            navigator.id.logout();
+                        })
+            },
+            onlogout: function () {
+                $.post('/account/logout')
+                        .always(function () {
+                            window.location.reload();
+                        });
+            }
+        });
+    });
 </script>
 ```
 
+Persona 的 JavaScript 库提供了一个特殊的对象 `navigator.id`，把这个对象的 request 方法绑定到登录链接上（登录链接放在页面顶部），再把这个对象的 logout 方法绑定到退出链接上：
+
+```html
+<!-- lists/templates/base.html -->
+<body>
+<div class="container">
+    <div class="navbar">
+        {% if user.email %}
+            <p>Logged in as {{ user.email }}</p>
+            <p><a id="logout" href="{% url 'logout' %}">Sign out</a></p>
+        {% else %}
+            <a href="#" id="login">Sign in</a>
+        {% endif %}
+        <p>User: {{ user }}</p>
+    </div>
+    <div class="row">
+      [...]
+```
+
+#### 15.2.3 `Browser-ID` 协议
+
+现在，如果用户点击登录链接，Persona
