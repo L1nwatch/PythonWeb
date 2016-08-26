@@ -259,6 +259,75 @@ urlpatterns = [
 
 ```python
 # accounts/urls.py
+from django.conf.urls import patterns, url
 
+urlpatterns = patterns('',
+                      url(r'^login$', 'accounts.views.login', name='login'),
+                      url(r'^logout$', 'accounts.views.logout', name='logout'),)
 ```
 
+接着还要在 `settings.py` 中启用认证后台和刚编写好的账户应用：
+
+```python
+# superlists/settings.py
+INSTALLED_APPS = (
+	# 'django.contrib.admin',
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.messages',
+    'django.contrib.staticfiles',
+    'lists',
+    'accounts',
+)
+
+AUTH_USER_MODEL = 'accounts.ListUser'
+AUTHENTICATION_BACKENDS = (
+	'accounts.authentication.PersonAuthenticationBackend',
+)
+
+MIDDLEWARE_CLASSES = (
+[...]
+```
+
+然后执行 `makemigrations` 命令，让刚才定义好的用户模型生效。
+
+再执行 `migrate` 命令，更新数据库。
+
+> 如果手动调试时 Persona 不起作用，而且在终端里看到 "audience mismatch" 错误，确认你访问网站使用的地址是：`http://localhost:8000`，而不是 `127.0.0.1`。
+
+> ### 旁注：把日志输出到标准错误
+>
+> 探究时最好能看到代码抛出的异常。Django 默认情况下并没有把所有异常都输送到终端，不过可以在 `settings.py` 中使用 `LOGGING` 变量让 Django 这么做：
+>
+> ```python
+> # superlists/settings.py
+> LOGGING = {
+>   'version': 1,
+>   'disable_existing_loggers': False,
+>   'handlers': {
+>     'console': {
+>       'level': 'DEBUG',
+>       'class': 'logging.StreamHandler',
+>     },
+>   },
+>   'loggers': {
+>     'django': {
+>       'handlers': ['console'],
+>     },
+>   },
+>     'root': {'level': 'INFO'},
+> }
+> ```
+>
+> Django 使用 Python 标准库中的企业级日志模块。这个模块虽然功能完善，但学习曲线十分陡峭。
+
+现在我们实现了一个可用的解决方案，把这些代码提交到探究时使用的分支吧：
+
+```shell
+git status
+git add accounts
+git commit -am "spiked in custom auth backend with persona"
+```
+
+现在该去掉探究代码了。
