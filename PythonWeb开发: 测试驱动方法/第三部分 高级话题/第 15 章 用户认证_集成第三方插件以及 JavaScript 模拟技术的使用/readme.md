@@ -331,3 +331,75 @@ git commit -am "spiked in custom auth backend with persona"
 ```
 
 现在该去掉探究代码了。
+
+###  去掉探究代码
+
+去掉探究代码意味着要使用 TDD 重写原型代码。第一步是编写功能测试先。
+
+我们还得继续待在 `persona-spike` 分支中，看功能测试能否在探究代码中通过，然后再回到 master 分支，并且只提交功能测试。
+
+功能测试的大纲如下：
+
+```python
+# functional_tests/test_login.py
+from .bash import FunctionalTest
+
+class LoginTest(FunctionalTest):
+    def test_login_with_persona(self):
+        # Y 访问这个很棒的超级列表网站
+        # 第一次注意到 "Sign in" 链接
+        self.browser.get(self.server_url)
+        self.browser.find_element_by_id('login').click()
+
+        # 出现一个 Persona 登录框
+        # 需要辅助函数，它们都用于实现 Selenium 测试中十分常见的操作：等待某件事发生。
+        self.switch_to_new_window("Mozilla Persona")
+
+        # Y 使用她的电子邮件地址登录
+        ## 测试中的电子邮件使用 mockmyid.com
+        # 可以使用如下方法查找 Persona 电子邮件输入框的 ID：手动打开网站，使用 Firefox 调试工具条(`Ctrl + Shift + I`)
+        # 这里没有使用真实的电子邮件地址，而是用虚拟工具生成的地址，因此不用在邮件服务供应商的网站上填写认证信息。虚拟工具可以使用 MockMyID 或者 Persona Test User
+        self.browser.find_element_by_id("authentication_email").send_keys("edith@mockmyid.com")
+        self.browser.find_element_by_tag_name("button").click()
+
+        # Persona 窗口关闭
+        self.switch_to_new_window("To-Do")
+
+        # 她发现自己已经登录
+        # 需要辅助函数，它们都用于实现 Selenium 测试中十分常见的操作：等待某件事发生。
+        self.wait_for_element_with_id("logout")
+        navbar = self.browser.find_element_by_css_selector(".navbar")
+        self.assertIn("edith@mockmyid.com", navbar.text)
+```
+
+> ### 评估第三方系统的测试基础设施
+>
+> 测试是评估第三方系统的一部分。集成外部服务时，要想清楚如何在功能测试中使用这项服务。
+>
+> 测试通常可以使用和真实环境中一样的服务，但有时需要使用第三方服务的“测试”版本。集成 Persona 时，本可以使用真实的电子邮件地址。比如说写一个功能测试访问 Yahoo.com，然后使用注册的临时账户登录。这么做有个问题，功能测试怎么写完全取决于 Yahoo 的电子邮件登录界面，而这个界面随时可能变化。
+>
+> 使用 MockMyID 或 Persona Test User 就不同了。这两个工具在 Persona 的文档中都提到过，使用起来非常顺畅，因此我们只需测试集成的重要部分。
+>
+> 再看一个更严重的问题，支付系统。如果要开始整合支付，支付系统就会成为网站最重要的部分之一，因此必须充分测试。但是你并不想每次运动功能测试时都使用真实的信用卡交易。所以大多数支付服务供应商都提供了测试板支付 API。不过各家供应商提供的测试版 API 质量参差不齐，所以一定要仔细研究。
+
+#### 15.3.1 常用 Selenium 技术：显示等待
+
+实现“等待”功能的两个辅助函数之一如下所示：
+
+```python
+# functional_tests/test_login.py
+import time
+[...]
+
+    def switch_to_new_window(self, text_in_title):
+        retries = 60
+        while retries > 0:
+            for handle in self.browser.window_handles:
+                self.browser.switch_to_window(handle)
+                if text_in_title in self.browser.title:
+                    return
+            retries -= 1
+            time.sleep(0.5)
+        self.fail("could not find window")
+```
+
