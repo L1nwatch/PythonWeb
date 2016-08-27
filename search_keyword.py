@@ -3,6 +3,8 @@
 # version: Python3.X
 """ 实现对指定文件夹下所有文件进行内容搜索, 关键词及搜索的文件类型由用户指定
 
+2016.08.20 发现搜寻 GBK 编码的工程时中文注释不能完全搜索到, 编码方便的能力还是需要加强一下.
+2016.08.13 发现打开不同编码时会出错, 需要加强一下编码方面的能力
 2016.07.27 扩展一下搜索文件类型
 2016.07.23 由于自己现在记的笔记形式是 GitHub + GitBook, 但是这两货的笔记搜索功能是在有限, 故需要将此程序进一步扩展
 2016.06.21 由于微机原理也要进行 ARM 平台小车的开发, 遇到了跟 ZigBee 一样的困境, 需要快速掌握工程文件, 所以还是将这个程序通用化吧
@@ -10,6 +12,9 @@
 """
 import os
 import argparse
+import chardet
+import re
+import platform
 
 __author__ = '__L1n__w@tch'
 
@@ -59,7 +64,7 @@ def set_argument(options):
     return configuration
 
 
-def initialize(default_file_type=".c#.h#.cpp#.py#.md#.css"):
+def initialize(default_file_type=".h#.c#.cpp#.pl#.md#.py"):
     """
     进行初始化操作, 包括 argparse 解析程序的初始化, 参数的相关设定等
     :return: path, file_type, keyword
@@ -73,6 +78,20 @@ def initialize(default_file_type=".c#.h#.cpp#.py#.md#.css"):
     return configuration["path"], configuration["file_type"]
 
 
+def get_keyword(word, content):
+    """
+    使用正则表达式进行搜索匹配
+    :param word: "keyword"
+    :param content: "first line \nheiheiehei keywordsecond line\nthird line\n"
+    :return: heiheiehei keywordsecond line\n
+    """
+    if "\r" in content:
+        result = re.search("[^\r\n]*({}[^\r\n]*\r?\n?)".format(word), content)
+    else:
+        result = re.search("[^\n]*({}[^\n]*\n?)".format(word), content)
+    return result.group() if result else None
+
+
 def search_keyword_infile(file_path, word):
     """
     判断一个文件内是否含有该关键词, 并且把含有该关键词的那一行返回回去
@@ -82,15 +101,40 @@ def search_keyword_infile(file_path, word):
     """
     # word 处理
     word = word.lower()
-    word = word.encode("utf8")
 
-    with open(path, "rb") as f:
-        data = f.readlines()
+    with open(file_path, "rb") as f:
+        data = f.read()
+        encoding = chardet.detect(data)["encoding"]
 
-    for each_line in data:
-        if word in each_line.lower():
-            return each_line
-    return None
+    try:
+        if encoding is not None:
+            data = data.decode(encoding)
+        else:
+            data = data.decode("utf8")
+    except UnicodeDecodeError:
+        data = data.decode("gbk")
+    except LookupError:
+        data = ""
+
+    return get_keyword(word, data)
+
+
+def decode_content(content):
+    """
+    给一定串字节流, 进行正确的解码操作
+    :param content: b"aaa"
+    :return: "aaa"
+    """
+    encoding = chardet.detect(content)["encoding"]
+    return content.decode(encoding)
+
+
+def is_windows_system():
+    """
+    判断运行程序的系统是否是 Windows 系统
+    :return: True or False
+    """
+    return "window" in platform.platform().lower()
 
 
 if __name__ == "__main__":
@@ -103,6 +147,12 @@ if __name__ == "__main__":
                 path = root + os.sep + each_file
                 line_content = search_keyword_infile(path, keyword)
                 if line_content:
-                    print("[*] Found in \"{}\", path is \033[95m{}\033[0m".format(each_file, path))
-                    print("[*] {}\033[91m{}\033[0m".format("\t" * 4, line_content.decode("utf8").strip()))
+                    color1, color2, color3, color4 = "\033[95m", "\033[0m", "\033[91m", "\033[0m"
+                    if is_windows_system():
+                        color1, color2, color3, color4 = "", "", "", ""
+                    print("[!] Found in \"{}\", path is {color1}{path}{color2}"
+                          .format(each_file, path=path, color1=color1, color2=color2))
+                    print("[!] {}{color3}{content}{color4}"
+                          .format("\t" * 4, color3=color3, content=line_content.strip(), color4=color4))
     print("[*] {} 搜索结束 {}".format("-" * 30, "-" * 30))
+    input("输入任意键退出")

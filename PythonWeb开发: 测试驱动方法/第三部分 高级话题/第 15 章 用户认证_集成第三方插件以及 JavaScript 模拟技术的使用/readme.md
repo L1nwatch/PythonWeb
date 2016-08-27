@@ -59,7 +59,6 @@ git checkout -b persona-spike
 
 
         var logoutLink = document.getElementById("logout");
-
         if (logoutLink) {
             logoutLink.onclick = function () {
                 navigator.id.logout();
@@ -83,7 +82,7 @@ git checkout -b persona-spike
                         })
             },
             onlogout: function () {
-                $.post('/account/logout')
+                $.post('/accounts/logout')
                         .always(function () {
                             window.location.reload();
                         });
@@ -183,7 +182,7 @@ class PersonAuthenticationBackend(object):
                   return ListUser.objects.create(email=email)
 	
     def get_user(self, email):
-        return ListUser.objets.get(email=email)
+        return ListUser.objects.get(email=email)
 ```
 
 从解说性的注释可以看出，这段代码是直接从 Mozilla 的网站上复制粘贴过来的。
@@ -225,7 +224,7 @@ from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, Permis
 
 class ListUserManager(BaseUserManager):
     def create_user(self, email):
-        ListUser.obejcts.create(email=email)
+        ListUser.objects.create(email=email)
     
     def create_superuser(self, email, password):
         self.create_user(email)
@@ -401,5 +400,40 @@ import time
             retries -= 1
             time.sleep(0.5)
         self.fail("could not find window")
+```
+
+在这个辅助函数中，我们自己动手实现等待机制：循环访问当前打开的所有浏览器窗口，查找有指定标题的那个。如果找不到，稍等一会再试，并且减少重试次数计数器。
+
+这种功能在 Selenium 测试中经常会用到，因此开发团队创建了等待 API。不过这个 API 无法适用于所有情况，所以才在这个辅助函数中自己动手实现等待机制。实现更简单的等待时可以使用 WebDriverWait 类，比如说等待具有指定 ID 的元素出现在页面中，可以这么写：
+
+```python
+# functional_tests/test_login.py
+from selenium.webdriver.support.ui import WebDriverWait
+[...]
+
+def wait_for_element_with_id(self, element_id):
+    WebDriverWait(self.browser, timeout=30).until(
+        lambda b: b.find_element_by_id(element_id)
+    )
+```
+
+这就是 Selenium 所谓的“显示等待”。我们已经在 `FunctionalTest.setUp` 中定义了一个“隐式等待”。当时设定只等待 3 秒，大多数情况下这段时间已经够用了，但等待 Persona 等外部服务时，有时要延长等待时间。
+
+[Selenium 文档](http://docs.seleniumhq.org/docs/04_webdriver_advanced.jsp)中有更多的示例，不过阅读[源码](http://code.google.com/p/selenium/source/browse/py/selenium/)也许会更直观，因为代码中的文档字符串写得很好。
+
+> `implicitly_wait` 并不可靠，尤其是涉及 JavaScript 代码时。如果功能测试要检查页面中的异步交互，最好使用 `wait_for_element_wit_id` 方法中的方式。
+
+运行这个功能测试会发现，我们的做法是可行的：
+
+```python
+python3 manage.py test functional_tests.test_login
+```
+
+你甚至还会看到视图留下的调试信息。现在撤销全部临时改动，使用测试驱动的方式一步步重新实现。
+
+#### 15.3.2 删除探究代码
+
+```shell
+
 ```
 
