@@ -506,3 +506,36 @@ todo_app
 
 > 执行这种工作前后一定要提交。
 
+文件位置变了，所以要调整现有的 JavaScript 单元测试：
+
+```html
+<!-- lists/static/tests/tests.html -->
+<link rel="stylesheet" href="../../../superlists/static/tests/qunit.css">
+
+[...]
+
+<script src="http://code.jquery.com/jquery.min.js"></script>
+<script src="../../../superlists/static/tests/qunit.js"></script>
+<script src="../list.js"></script>
+```
+
+可以在浏览器中打开这些单元测试，检查是否仍能正常使用。
+
+我们要在设置文件中指定新的静态文件夹地址：
+
+```python
+# superlists/settings.py
+STATIC_ROOT = os.path.join(BASE_DIR, "../static")
+STATICFILES_DIRS = (
+	os.path.join(BASE_DIR, "superlists", "static"),
+)
+```
+
+> 建议把前面设定的 LOGGING 也加到设置文件中。
+
+然后可以运行布局和样式的功能测试，确认 CSS 仍能正常使用：
+
+```shell
+python3 manage.py test functional_tests.test_layout_and_styling
+```
+
