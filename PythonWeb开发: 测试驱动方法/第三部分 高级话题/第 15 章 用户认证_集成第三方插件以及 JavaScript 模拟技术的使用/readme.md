@@ -434,6 +434,75 @@ python3 manage.py test functional_tests.test_login
 #### 15.3.2 删除探究代码
 
 ```shell
-
+git checkout master # 切换到 master 分支
+rm -rf accounts # 删除所有探究代码
+git add functional_tests/test_login.py
+git commit -m "FT for login with Persona"
 ```
+
+然后再次运行功能测试，让它驱动开发：
+
+```shell
+python3 manage.py test functional_tests.test_login
+```
+
+测试首先要求添加一个登录链接。在 HTML ID 前加上 `id_` 。这是一种传统做法，便于区分 HTML 和 CSS 中的类和 ID。先稍微修改一下功能测试：
+
+```python
+# functional_tests/test_login.py
+self.browser.find_element_by_id("id_login").click()
+[...]
+self.wait_for_element_with_id("id_logout")
+```
+
+然后添加一个没有实际作用的登录链接。Bootstrap 为导航条提供了原生的类，可以拿来使用：
+
+```html
+<!-- lists/template/base.html -->
+<div class="container">
+  <nav class="navbar navbar-default" role="navigation">
+  	<a class="navbar-brand" href="/">Superlists</a>
+    <a class="btn navbar-btn navbar-right" id="id_login" href="#">Sign in</a>
+  </nav>
+</div>
+
+<div class="row">
+[...]
+```
+
+等待 30 秒之后，测试出现了如下错误：
+
+```python
+AssertionError: could not find window
+```
+
+得到了测试的授权，可以进入下一步了：编写更多的 JavaScirpt 代码。
+
+### 15.4 涉及外部组件的 JavaScript 单元测试：首次使用模拟技术
+
+为了让功能测试继续向下运行，需要弹出 Persona 窗口。为此，要去除客户端 JavaScript 中的探究代码，换用 Persona 代码库。在这个过程中，要使用 JavaScript 单元测试和模拟技术驱动开发。
+
+### 15.4.1 整理：全站共用的静态文件夹
+
+首先要做些整理工作：在 `superlists/superlists` 中创建一个全站共用的静态文件目录，把所有 Bootstarp 的 CSS 文件、QUnit 代码和 base.css 都移到这个目录中。移动之后应用的文件夹结构如下所示：
+
+```shell
+tree todo_app -L 3 -I __pycache__
+todo_app
+├── __init__.py
+├── settings.py
+├── static
+│   ├── base.css
+│   ├── bootstrap
+│   │   ├── css
+│   │   ├── fonts
+│   │   └── js
+│   └── tests
+│       ├── qunit.css
+│       └── qunit.js
+├── urls.py
+└── wsgi.py
+```
+
+> 执行这种工作前后一定要提交。
 
