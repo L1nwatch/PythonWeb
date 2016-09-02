@@ -482,7 +482,7 @@ AssertionError: could not find window
 
 为了让功能测试继续向下运行，需要弹出 Persona 窗口。为此，要去除客户端 JavaScript 中的探究代码，换用 Persona 代码库。在这个过程中，要使用 JavaScript 单元测试和模拟技术驱动开发。
 
-### 15.4.1 整理：全站共用的静态文件夹
+#### 15.4.1 整理：全站共用的静态文件夹
 
 首先要做些整理工作：在 `superlists/superlists` 中创建一个全站共用的静态文件目录，把所有 Bootstarp 的 CSS 文件、QUnit 代码和 base.css 都移到这个目录中。移动之后应用的文件夹结构如下所示：
 
@@ -539,3 +539,151 @@ STATICFILES_DIRS = (
 python3 manage.py test functional_tests.test_layout_and_styling
 ```
 
+接下来创建一个应用，命名为 accounts，与登录相关的代码都放在这个应用中，其中就有 Persona 的 JavaScript 代码：
+
+```python
+python3 manage.py startapp accounts
+mkdir -p accounts/static/tests
+```
+
+整理完了就可以提交了。然后，再看一下探究时编写的 JavaScript 代码：
+
+```javascript
+var loginLink = document.getElementById("login");
+if (loginLink) {
+  loginLink.onclick = function() { navigator.id.request(); };
+}
+```
+
+#### 15.4.2 什么是模拟技术，为什么要模拟，模拟什么
+
+要把登录链接的 `onclick` 事件绑定到 `Persona` 代码库提供的 `navigator.id.request` 函数上。
+
+不会在单元测试中真的调用第三方函数，因为不想让单元测试到处弹出 `Persona` 窗口。所以要使用模拟技术：在测试中虚拟或者模拟实现第三方 `API`。
+
+要做的是把真正的 `navigator` 对象替换成一个我们自己创建的虚拟对象，这个虚拟对象能告诉我们发生了什么事。
+
+#### 15.4.3 命名空间 
+
+在 `base.html` 环境中，`navigator` 只是全局作用域中的一个对象。这个对象在 `Mozilla` 开发的 `Persona` 代码库中使用 `<script>` 标签引入 `include.js` 时创建。测试全局变量很麻烦，所以可以把 `navigator` 传入初始化函数（`initialise` 和 `initialize` 都是初始化的意思，不过 `initialise` 是英式英语），创建一个本地变量。`base.html` 最终使用的代码如下所示：
+
+```html
+<script src="/static/accounts/accounts.js"></script>
+<script>
+	$(document).ready(function() {
+      Superlists.Accounts.initialize(navigator)
+	});
+</script>
+```
+
+这里指定把 `initialize` 函数放在多层嵌套的命名空间 `Superlists.Accounts` 对象中。`JavaScript` 的名声被全局作用域这种编程模式搞坏了，而上述命名空间和命名习惯有助于缓解这种局面。很多 `JavaScript` 库都可能有名为 `initialize` 的函数，但很少会有 `Superlists.Accounts.initialize`。调用 `initialize` 函数的那行代码很简单，无需任何单元测试。
+
+ #### 15.4.4 在 `initialize` 函数的单元测试中使用一个简单的驭件(mock，或者称为侦件 spy)
+
+`initialize` 函数本身需要测试。样板文件 `HTML` 从清单的测试复制而来，然后修改下面这一部分：
+
+```html
+<!-- accounts/static/tests/tests.html -->
+<div id="qunit-fixture">
+    <a id="id_login">Sign in</a>
+</div>
+
+<script src="http://code.jquery.com/jquery.min.js"></script>
+<script src="../../../todo_app/static/tests/qunit.js"></script>
+<script src="../accounts.js"></script>
+<script>
+    /* global $, test, equal, sinon, Superlists */
+
+    QUnit.test("initialize binds sign in button to navigator.id.request", function (assert) {
+        var requestWasCalled = false;	// 确保 requestWasCalled 的初始值为 false
+        var mockRequestFunction = function () {
+            requestWasCalled = true;
+        };	// mockRequestFunction 是个简单的函数，调用时会把 requestWasCalled 变量的值简单地设为 true
+        var mockNavigator = { // mockNavigator 其实就是一个普通的 JavaScript 对象，有个名为 id 的属性，其值也是一个对象，在这个对象中有个名为 request 的属性，其值是 mockRequestFunction 变量
+            id: {
+                request: mockRequestFunction
+            }
+        };
+
+        Superlists.Accounts.initialize(mockNavigator); // 触发点击事件之前，像在真正的页面中一样，调用 Superlists.Accounts.initialize 函数。唯一的区别在于，没有传入 Persona 提供的真正全局 navigator 对象，而是虚拟的 mockNavigator 对象
+        $("#id_login").trigger("click");	// id_login 元素上发生点击事件时调用
+        assert.equal(requestWasCalled, true);	// 断定变量 requestWasCalled 的值为 true。这个断言检查的其实是有没有像在 `navigatro.id.request` 中一样调用 `request` 函数。
+    })
+</script>
+```
+
+ 这些代码的最终目的是，如果想让这个测试通过，就只有一种方法，即 `initialize` 函数要把 `id_login` 元素的 click 事件绑定到 `.id.request` 方法上，而且这个方法必须由传入 `initialize` 函数的对象提供。如果使用驭件对象（mock object）时这个测试能通过，我们就相信，在真实的页面中传入真正的对象时，`initialize` 函数也会做出正确的操作。
+
+> 在 DOM 元素上测试事件时，需要有一个真正存在的元素来触发事件，还要注册监听程序。如果你忘记添加这个元素，测试会出错，而且极难调试，因为 `.trigger` 悄无声息，不会报错。
+
+运行测试，看到的第一个错误是：
+
+```javascript
+Died on test #1     at http://localhost:63342/superlists_for_pythonweb/accounts/static/tests/tests.html:21:11: Superlists is not defined@ 1 ms
+Source: 	
+ReferenceError: Superlists is not defined
+```
+
+这个错误和 Python 中的 ImportError 是一个意思。下面开始编写 `accounts/static/accounts.js` ：
+
+```javascript
+window.Superlists = null;
+```
+
+在 JavaScript 中可以写成 `window.Superlists = null;` 。使用 `windows.` 的目的是，确保获取全局作用域中的对象。
+
+接下来，根据错误提示继续修改：
+
+```javascript
+window.Superlists = {
+  Accounts: {}
+};
+```
+
+测试结果为：
+
+```javascript
+Superlists.Accounts.initialize is not a function
+```
+
+在实践中，设定这种命名空间时，其实应该遵守“添加或创建”模式，如果作用域中已经有 `window.Superlists` 对象，我们就扩展这个对象，而不是替换原对象。`window.Superlists = window.Superlists || {}` 是一种方式，jQuery 的 `$.extend` 是另一种方式。
+
+***
+
+接着把它定义为一个函数：
+
+```javascript
+window.Superlists = {
+  Accounts: {
+    initialize: function() {}
+  }
+};
+```
+
+从而得到一个真正的测试失败的消息，而不仅仅是错误。
+
+接下来，把定义 initialize 函数和导入命名空间 Superlists 这两步分开。同时，还要使用 console.log（JavaScript 中用于输出调试信息的方法），看看是哪个对象调用了 initialize 函数：
+
+```javascript
+var initialize = function (navigator){
+  console.log(navigator);
+};
+
+window.Superlists = {
+  Accounts: {
+    initialize: initialize
+  }
+};
+```
+
+在 Firefox（Chrome）中可以使用快捷键 `Ctrl-Shift-I` 调出 JavaScript 终端（macOS 下是 `alt + command + I`)，在终端中会看到输出了 `[object Object]`。点击输出的内容，会看到在测试中定义的属性：一个 id，内部还有一个名为 `request` 的函数。
+
+现在直接让测试通过：
+
+```javascript
+var initialize = function (navigator) {
+  navigator.id.request();
+};
+```
+
+测试后是通过了，但这不是我们想要的实现方式。我们一直在调用 `navigator.id.request`，而不是只在点击时才调用，需要调整测试。
