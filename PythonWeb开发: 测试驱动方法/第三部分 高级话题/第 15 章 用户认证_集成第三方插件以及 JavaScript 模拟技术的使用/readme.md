@@ -833,6 +833,185 @@ Sinon 文档中有更多的说明——其实[首页](http://sinonjs.org/)的功
 
 ```javascript
 // accounts/static/accounts.js
+var initialize = function (navigator) {
+  $('#id_login').on('click', function () {
+    navigator.id.request();
+  });
+  
+  navigator.id.watch();
+};
+```
+
+但这么做导致另一个测试失败了。
+
+在 Firefox 中，每个对象都有 `.watch` 函数。所以在前一个测试中也要创建一个驭件：
+
+```javascript
+<!-- accounts/static/tests/tests.html -->
+  [...]
+   var mockNavigator = {
+     id: {
+       request: mockRequestFunction,
+  	   watch: function() {}
+     }
+   };
+   [...]
+```
+
+现在测试都能通过了。
+
+#### 15.4.6 检查参数的调用
+
+调用 watch 函数的方法还不正确——watch 函数要知道当前用户，还要为登录和退出定义几个回调函数。先解决当前用户：
+
+```javascript
+// accounts/static/tests/tests.html
+
+QUnit.test("watch sees current user", function (assert) {
+  var user = 'current user';
+  var token = 'csrf token';
+  var urls = {login: 'login url', logout: 'logout url'};
+  var mockNavigator = {
+    id: {
+      watch: sinon.mock()
+    }
+  };
+
+  Superlists.Accounts.initialize(mockNavigator, user, token, urls);
+  var watchCallArgs = mockNavigator.id.watch.firstCall.args[0];
+  assert.equal(watchCallArgs.loggedInUser, user, 'check user');
+});
+```
+
+编写代码的方式与前面类似（下一节我们要删除重复的测试代码）。在驭件上调用 `.firstCall.args[0]`，获取传入 watch 函数的参数（args 是由位置参数组成的列表）。
+
+测试结果表明我们还没有向 watch 函数传入任何参数。一步步来解决：
+
+```javascript
+// accounts/static/accounts.js
+navigator.id.watch({});
+```
+
+错误消息说是没有 `current user`。解决这个问题：
+
+```javascript
+var initialize = function (navigator, user, token, urls) {
+  [...]
+   
+   navigator.id.watch({
+     loggedInUser: user
+   });
+```
+
+这样就能使测试全部通过了。
+
+#### 15.4.7 QUnit 中的 setup 和 teardown 函数，以及 Ajax 请求测试
+
+接下来检查 onlogin 回调函数。当 Persona 有用户认证信息要发给服务器验证时，该回调函数会被调用。这个过程涉及 Ajax 调用（`$.post`），一般来说很难测试，不过 `sinon.js` 提供了一个辅助的虚拟 `XMLHttpRequest` 服务器。
+
+这个对象暂时屏蔽了 JavaScript 中原生的 `XMLHttpRequest` 类，所以测试完毕后确认其是否还原是个好习惯。借此机会，学习 `QUnit` 中的 `setup` 和 `teardown` 方法，这两个方法都用于 `module` 函数中。`module` 函数有点儿类似于 `unittest.TestCase` 类，其作用是把随后的所有测试归类到一起。
+
+> #### 关于 Ajax
+>
+> Ajax 是 "Asynchronous JavaScript XML"（异步 JavaScript 和 XML）的简称，不过 "XML" 有点表述不当，因为现在基本上都是用纯文本或 JSON。使用 Ajax 技术可以在客户端 JavaScript 代码中通过 HTTP 协议（GET 和 POST）请求收发数据，而且 "异步" 完成，既没有阻塞，也不用重新加载页面。
+>
+> 这里要使用 Ajax 技术向登录视图发起 POST 请求，发送 Persona 获取的判定数据。我们会使用 jQuery 提供的 Ajax [辅助函数](http://api.jquery.com/jQuery.post/)。
+
+在第一个测试之后、测试 "initialize calls navigator.id.watch" 之前加入 module 函数：
+
+```javascript
+// accounts/static/tests/tests.html
+var user, token, urls, mockNavigator, requests, xhr; // 把 user、token、urls 等变量放在外层作用域中，这样它们才能用于该文件中的所有测试。
+module("navigator.id.watch tests", {
+  setup: function () {
+    user = 'current user'; // setup 函数中的变量就像 unittest 中的 setUP 函数一样，会在每个测试之前初始化。这些变量中包括 mockNavigator
+    token = 'csrf token';
+    urls = { login: 'login url', logout: 'logout url'};
+    mockNavigator = {
+      id: {
+        watch: sinon.mock()
+      }
+    };
+    xhr = sinon.useFakeXMLHttpRequest(); // 在 setup 函数中，还调用了 Sinon 提供的 useFakeXMLHttpRequest 函数，暂时屏蔽浏览器对 Ajax 的支持
+    requests = [];
+    // 告诉 Sinon，把所有 Ajax 请求都保存到 requests 数组中，以便在测试中使用
+    xhr.onCreate = function (request) { requests.push(request);};
+  },
+  teardown: function() {
+    mockNavigator.id.watch.reset(); // 最后，要做些清理工作——在两次测试之间还原 watch 驭件(否则，在某次测试中的调用结果会显示在另一个测试中)。
+    xhr.restore(); // 然后把 JavaScript 中的 XMLHttpRequest 还原到初始状态
+  }
+});
+
+test("initialize calls navigator.id.watch", function(){
+  [...]
+```
+
+这样就可以使用更少的代码重写前面两个测试了：
+
+```javascript
+// accounts/static/tests/tests.html
+test("initialize calls navigator.id.watch", function () {
+  Superlists.Accounts.initialize(mockNavigator, user, token, urls);
+  equal(mockNavigator.id.watch.calledOnce, true, 'check watch function called');
+});
+
+test("watch sees current user", function () {
+  Superlists.Accounts.initialize(mockNavigator, user, token, urls);
+  var watchCallArgs = mockNavigator.id.watch.firstCall.args[0];
+  equal(watchCallArgs.loggedInUser, user, 'check user');
+});
+```
+
+测试仍能通过，另外测试名称前面加上了模块名。
+
+#### 个人实践
+
+由于跟书中的 QUnit 版本不同，所以以下是自己成功的代码：
+
+```javascript
+var user, token, urls, mockNavigator, requests, xhr; // 把 user、token、urls 等变量放在外层作用域中，这样它们才能用于该文件中的所有测试。
+QUnit.module("navigator.id.watch tests", {
+  // 这里书中用的是 setup, 不过自己测试了无效
+  beforeEach: function () {
+    user = 'current user'; // setup 函数中的变量就像 unittest 中的 setUP 函数一样，会在每个测试之前初始化。这些变量中包括 mockNavigator
+    token = 'csrf token';
+    urls = {login: 'login url', logout: 'logout url'};
+    mockNavigator = {
+      id: {
+        watch: sinon.mock()
+      }
+    };
+    xhr = sinon.useFakeXMLHttpRequest(); // 在 setup 函数中，还调用了 Sinon 提供的 useFakeXMLHttpRequest 函数，暂时屏蔽浏览器对 Ajax 的支持
+    requests = [];
+    // 告诉 Sinon，把所有 Ajax 请求都保存到 requests 数组中，以便在测试中使用
+    xhr.onCreate = function (request) {
+      requests.push(request);
+    };
+  },
+  // 这里书中是用的 teardown, 不过自己测试了无效
+  afterEach: function () {
+    mockNavigator.id.watch.reset(); // 最后，要做些清理工作——在两次测试之间还原 watch 驭件(否则，在某次测试中的调用结果会显示在另一个测试中)。
+    xhr.restore(); // 然后把 JavaScript 中的 XMLHttpRequest 还原到初始状态
+  }
+});
+
+QUnit.test("initialize calls navigator.id.watch", function (assert) {
+  Superlists.Accounts.initialize(mockNavigator, user, token, urls);
+  assert.equal(mockNavigator.id.watch.calledOnce, true, 'check watch function called');
+});
+
+QUnit.test("watch sees current user", function (assert) {
+  Superlists.Accounts.initialize(mockNavigator, user, token, urls);
+  var watchCallArgs = mockNavigator.id.watch.firstCall.args[0];
+  assert.equal(watchCallArgs.loggedInUser, user, 'check user');
+});
+```
+
+onlogin 回调函数的测试方法如下：
+
+```javascript
+// accounts/static/tests/tests.html
 
 ```
 
