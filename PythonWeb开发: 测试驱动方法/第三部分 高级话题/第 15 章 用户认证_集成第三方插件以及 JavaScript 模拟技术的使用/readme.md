@@ -681,9 +681,158 @@ window.Superlists = {
 现在直接让测试通过：
 
 ```javascript
+// accounts/static/accounts.js
 var initialize = function (navigator) {
   navigator.id.request();
 };
 ```
 
 测试后是通过了，但这不是我们想要的实现方式。我们一直在调用 `navigator.id.request`，而不是只在点击时才调用，需要调整测试。
+
+调整测试之前，先随便改改代码，看是否真正理解了我们在做什么。如果把代码改成下面这样：
+
+```javascript
+// accounts/static/accounts.js
+var initialize = function (navigator) {
+  navigator.id.request();
+  navigator.id.doSomethingElse();
+};
+```
+
+从测试的结果中可以看到，传入的模拟 navigator 对象完全在控制之中。这个对象只拥有被赋予的属性和方法。如果想接着改，可以定义这个方法：
+
+```javascript
+// accounts/static/tests/tests.html
+var mockNavigator = {
+  id: {
+    request: mockRequestFunction,
+    doSomethingElse: function () {
+      console.log("called me!");
+    }
+  }
+};
+```
+
+这样测试就通过了。打开调试窗口，会看到对应的输出。
+
+现在撤销最近的两次改动，然后修改单元测试，确保 request 函数只在触发点击事件之后才被调用。还要添加一些错误消息，以便找出失败的是两个 equal 断言中哪个失败了：
+
+```javascript
+// accounts/static/tests.html
+var mockNavigator = {
+  id: {
+    request: mockRequestFunction
+  }
+};
+Superlists.Accounts.initialize(mockNavigator);
+equal(requestWasCalled, false, "check request not called before click");
+$("#id_login").trigger("click");
+equal(requestWasCalled, true, "check request called after click");
+```
+
+>在 QUnit 中，断言的消息（equal 的第三个参数）其实是“成功”消息，不管测试是否通过都会显示。所以才要使用肯定式语句。
+
+下面让 `navigator.id.request` 函数只在点击 `id_login` 之后才调用：
+
+```javascript
+// accounts/static/accounts.js
+/* global $ */
+
+var initialize = function (navigator) {
+  $("#id_login").on("click", function () {
+    navigator.id.request();
+  });
+};
+[...]
+```
+
+测试能通过了，接下来在模板中引入这个文件：
+
+```html
+<!-- lists/templates/base.html -->
+<script src="http://code.jquery.com/jquery.min.js"></script>
+<script src="https://login.persona.org/include.js"></script>
+<script src="/static/accounts.js"></script>
+<script src="/static/list.js"></script>
+<script>
+  /* global $, Superlists, navigator */
+  
+  $(document).ready(function () {
+    Superlists.Accounts.initialize(navigator);
+  })
+</script>
+</body>
+```
+
+还得把 accounts 应用加到 settings.py 中，否则无法伺服静态文件 `accounts/static/accounts.js` 。
+
+然后运行功能测试，可惜毫无进展。可以手动打开网站，然后查看 JavaScript 调试终端查明原因。
+
+#### 15.4.5 高级模拟技术
+
+现在要正确调用  `Mozilla` 的 `navigator.id.watch` 函数。再看一下之前编写的探究代码，可以看出，watch 函数需要从全局作用中获取一些信息，包括当前用户的电子邮件地址，作为 `loggedInUser` 参数传入 watch 函数。以及当前使用的 CSRF 令牌，传入发往登录视图的 `Ajax POST` 请求。
+
+在这段代码中还硬编码了两个 URL，这两个 URL 最好从 Django 中获取，方法如下：
+
+```javascript
+var urls = {
+  login: "{% url 'login' %}",
+  logout: "{% url 'logout' %}",
+};
+```
+
+这是从全局作用域中传入的第三个变量。已经定义了 initialize 函数，假设可以按照下面的方式调用：
+
+```javascript
+Superlists.Accounts.initialize(navigator, user, token, urls);
+```
+
+##### 使用 sinon.js 创建驭件，确认调用 API 的方式是否正确
+
+正如看到的那样，创建驭件是可能的。实际上，JavaScript 更是将其变得相对容易，不过使用驭件库可以避免很多繁复的操作。JavaScript 领域最受欢迎的驭件库是 sinon.js。下载这个[代码库](http://sinonjs.org/)，把它放到全站共用的静态测试文件夹中。
+
+接下来，在账户测试中引入这个库：
+
+```html
+<!-- accounts/static/tests/tests.html -->
+<script src="http://code.jquery.com/jquery.min.js"></script>
+<script src="../../../superlists/static/tests/qunit.js"></script>
+<script src="../../../superlists/static/tests/sinon.js"></script>
+<script src="../accounts.js"></script>
+```
+
+现在可以使用 Sinon 提供的驭件对象编写测试了(Sinon 还专门提供了侦件对象和桩件对象)：
+
+```javascript
+// accounts/static/tests/tests.html
+QUnit.test("initialize calls navigator.id.watch", function (assert) {
+  var user = 'cuurent user';
+  var token = 'csrf token';
+  var urls = {login: 'login url', logout: 'logout url'};
+  var mockNavigator = {
+    id: {
+      watch: sinon.mock() // 和之前一样，创建一个模拟的 navigator 对象，不过这一次没有自己动手定义函数实现所需的功能，而是使用一个 sinon.mock() 对象
+    }
+  };
+
+  Superlists.Accounts.initialize(mockNavigator, user, token, urls);
+
+  assert.equal(
+    mockNavigator.id.watch.calledOnce, // 这个对象会在特殊的属性(例如 calledOnce) 中记录发生了什么，在断言中可以比较这个属性的值。
+    true,
+    'check watch function called'
+  );
+});
+```
+
+Sinon 文档中有更多的说明——其实[首页](http://sinonjs.org/)的功能概览就写得不错。
+
+会得到一个预期的失败测试。
+
+接下来加入对 watch 函数的调用：
+
+```javascript
+// accounts/static/accounts.js
+
+```
+
