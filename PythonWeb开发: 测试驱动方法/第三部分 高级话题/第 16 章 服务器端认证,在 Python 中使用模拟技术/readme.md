@@ -525,3 +525,194 @@ def get_user(self, email):
 
 现在第二个测试通过了。而且我们得到了一个可以使用的认证后台。下面我们可以编写自定义的用户模型了。
 
+### 16.4一个最简单的自定义用户模型
+
+Django 原生的用户模型对记录什么用户信息做了各种设想，明确要记录的包括名和姓，而且强制使用用户名。我坚信，除非真的需要，否则不要存储用户的任何信息。所以，一个只记录电子邮件地址的用户模型就足够了。
+
+```python
+# accounts/tests/test_models.py
+from django.test import TestCase
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+class UserModelTest(TestCase):
+    def test_user_is_valid_with_email_only(self):
+        user = User(email="a@b.com")
+        user.full_clean() # 不该抛出异常
+```
+
+测试的结果是一个预期失败，原来的模型要求有用户名、密码等，我们把模型写成这样：
+
+```python
+# accounts/models.py
+from django.db import models
+
+class User(models.Model):
+    email = models.EmailField()
+```
+
+然后在 `settings.py` 中使用 `AUTH_USER_MODEL` 变量设定使用这个模型。同时，把前面写好的认证后台添加到配置中：
+
+```python
+# superlists/settings.py
+AUTH_USER_MODEL = "accounts.User"
+AUTHENTICATION_BACKENDS = (
+	"accounts.authentication.PersonaAuthenticationBackend",
+)
+```
+
+现在，Django 告诉我们有些错误（注意，这是在执行 `makemigrations` 时才提示这些错误），因为自定义的用户模型需要一些元信息。
+
+```python
+AttributeError: type object 'User' has no attribute 'REQUIRED_FIELDS'
+```
+
+于是再添加：
+
+```python
+class User(models.Model):
+    email = models.EmailField()
+    REQUIRED_FIELDS = ()
+```
+
+还有问题：
+
+```python
+AttributeError: type object 'User' has no attribute 'USERNAME_FIELD'
+```
+
+于是修改：
+
+```python
+class User(models.Model):
+    email = models.EmailField()
+    REQUIRED_FIELDS = ()
+    USERNAME_FIELD = "email"
+```
+
+最后做一次迁移。
+
+```shell
+python manage.py makemigrations
+```
+
+#### 16.4.1 稍微有点儿失望
+
+现在，有几个测试很奇怪，出乎意料地失败了。好像 Django 坚持要求用户模型中有 `last_login` 字段。
+
+```python
+# accounts/models.py
+from django.db import models
+from django.utils import timezone
+
+class User(models.Model):
+    email = models.EmailField()
+    last_login = models.DateTimeField(default=timezone.now)
+    REQUIRED_FIELDS = ()
+    USERNAME_FIELD = "email"
+```
+
+再次做一次迁移，把之前的迁移文件删掉，重新创建：
+
+```shell
+rm accounts/migrations/0001_initial.py
+python3 manage.py makemigrations
+```
+
+现在测试都能通过了。
+
+#### 16.4.2 把测试当做文档
+
+接下来我们要把 email 字段设为主键，因此必须要把自动生成的 id 字段删除。虽然警告可能表明我们要做些修改，不过最好先为这次改动编写一个测试：
+
+```python
+# accounts/tests/test_models.py
+def test_email_is_primary_key(self):
+    user = User()
+    self.assertFalse(hasattr(user, "id"))
+```
+
+如果以后回过头来再看代码，这个测试能唤起我们的记忆，知道曾经做过这次修改。
+
+> 测试可以作为一种文档形式，因为测试体现了你对某个类或函数的需求。如果你忘记了为什么要使用某种方法编写代码，可以回过头来看测试，有事就能找到答案。
+
+实现的方式如下（可以先使用 `unique=True` 看看结果如何）：
+
+```python
+# accounts/models.py
+email = models.EmailField(primary_key=True)
+```
+
+这么写可以让测试通过了，于是再清理一下迁移，确保所有设定都能应用到数据库中。
+
+#### 16.4.3 用户已经通过认证
+
+用户模型还需要一个属性才算完整：标准的 Django 用户模型提供了一个 API，其中包含很多[方法](https://docs.djangoproject.com/en/1.7/ref/contrib/auth/#methods)，大多数我们都不需要，但有一个能用到：`.is_authenticated()`：
+
+```python
+# accounts/tests/test_models.py
+def test_is_authenticated(self):
+    user = User()
+    self.assertTrue(user.is_authenticated())
+```
+
+测试结果说 `User` 没有该属性，解决办法是：
+
+```python
+# accounts/models
+class User(models.Model):
+    email = models.EmailField(primary_key=True)
+    last_login = models.DateTimeField(default=timezone.now)
+    REQUIRED_FIELDS = ()
+    USERNAME_FIELD = "email"
+
+    def is_authenticated(self):
+        return True
+```
+
+于是测试都可以通过了。
+
+### 16.5 关键时刻：功能测试能通过么
+
+现在可以看一下功能测试的结果了。下面来修改基模板。首先，已登录用户和未登录用户看到的导航条应该不同：
+
+```html
+<nav class="navbar navbar-default" role="navigation">
+  <a class="navbar-brand" href="/">Superlists</a>
+  {% if user.email %}
+  <a class="btn navbar-btn navbar-right" id="id_logout" href="#">Log out</a>
+  <span class="navbar-text navbar-right">Logged in as {{ user.email }}</span>
+  {% else %}
+  <a class="btn navbar-btn navbar-right" id="id_login" href="#">Sign in</a>
+  {% endif %}
+</nav>
+```
+
+然后，把几个上下文变量传入 `initialize` 方法：
+
+```javascript
+// lists/templates/base.html
+/* global $, Superlists, navigator */
+$(document).ready(function () {
+  var user = "{{ user.email }}" || null;
+  var token = "{{ csrf_token }}" || null;
+  var urls = {
+    login: "{% url 'persona_login' %}",
+    logout: "TODO",
+  };
+  Superlists.Accounts.initialize(navigator, user, token, urls);
+});
+```
+
+试一下功能测试，可以发现通过了。
+
+接下来可以做次提交了，你可以做一系列单独的提交——登录视图、认证后台、用户模型、修改模型。或者，考虑到这些代码都有关联，不能独自运行，也可以做一次大提交：
+
+```shell
+git status
+git add .
+git diff --staged
+git commit -am "Custom Persona auth backend + custom user model"
+```
+
