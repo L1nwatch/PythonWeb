@@ -1012,6 +1012,170 @@ onlogin 回调函数的测试方法如下：
 
 ```javascript
 // accounts/static/tests/tests.html
+QUnit.test("onlogin does ajax post to login url", function (assert) {
+  Superlists.Accounts.initialize(mockNavigator, user, token, urls);
+  var onloginCallback = mockNavigator.id.watch.firstCall.args[0].onlogin; // 从 navigator 模拟对象的 watch 驭件中可以提取出我们定义的 onlogin 回调函数
+  onloginCallback(); // 为了测试这个回调函数，可以直接调用它
+  assert.equal(requests.length, 1, 'check ajax request'); // Sinon 中的 fakeXMLHttpRequest 服务器会捕获我们发出的任意 Ajax 请求，并把它们存入 requests 数组。然后可以检查很多信息，例如是否为 POST 请求，或者请求的是哪个 URL
+  assert.equal(requests[0].method, 'POST');
+  assert.equal(requests[0].url, urls.login, 'check url');
+});
 
+QUnit.test("onlogin sends assertion with csrf token", function (assert) {
+  Superlists.Accounts.initialize(mockNavigator, user, token, urls);
+  var onloginCallback = mockNavigator.id.watch.firstCall.args[0].onlogin;
+  var assertion = 'browser-id assertion';
+  onloginCallback(assertion);
+  assert.equal(
+    requests[0].requestBody,
+    $.param({assertion: assertion, csrfmiddlewaretoken: token}), 'check POST data'
+    // POST 请求真正发送的参数保存在 .requestBody 中，而且被 URL 编码了(使用 &key=val 的语法形式)。jQuery 提供的 $.param 函数可以进行 URL 编码，所以对比时调用了这个函数。
+  );
+});
 ```
 
+这两个测试跟预期的一样，失败了，接下来又要经历一次 "单元测试/编写代码" 循环。
+
+最终写出的代码如下：
+
+```javascript
+navigator.id.watch({
+  loggedInUser: user,
+  onlogin: function (assertion) {
+    $.post(urls['login'], {assertion: assertion, csrfmiddlewaretoken: token}
+          );
+  }
+});
+```
+
+#### 退出
+
+在作者写作书的时候，Persona 监视 API 状态的 “onlogout" 部分还未定型。它虽然可以使用，但不能满足作者的需求。所以作者只是把它编写成一个空函数，并将其当做一个占位符。最简单的测试如下：
+
+```javascript
+// accounts/static/tests/tests.html
+QUnit.test("onlogout is just a placeholder", function (assert) {
+  Superlists.Accounts.initialize(mockNavigator, user, token, urls);
+  var onlogoutCallback = mockNavigator.id.watch.firstCall.args[0].onlogout;
+  assert.equal(typeof onlogoutCallback, "function", "onlogout should be a function");
+});
+```
+
+得到的退出函数十分简单：
+
+```javascript
+[...]
+	onlogout: function() {}
+ });
+```
+
+#### 15.4.8 深层嵌套回调函数和测试异步代码
+
+回调嵌套是 JavaScript 的精髓。幸好 `sinon.js`  对此提供了帮助。还需要测试登录时调用的 post 方法，也设置了一些回调函数，在 POST 请求的结果返回之后做些处理工作：
+
+```javascript
+.done(function() { window.location.reload(); })
+.fail(function() { navigator.id.logout(); });
+```
+
+这里不测试 `window.location.reload` ，因为这有点儿过于复杂了（我们无法模拟 `window.location.reload` ，所以要定义一个未经测试的 `Superlists.Accounts.refreshPage` 函数，然后在测试中创建一个驭件模拟 `refreshPage` 函数，检查它是否被设为 Ajax 调用的 `.done` 回调），而且这可以在 Selenium 测试中测试。不过，这里要测试 fail 回调函数，以此演示嵌套回调也能测试：
+
+```javascript
+// accounts/static/tests/test.html
+QUnit.test("onlogin post failure should do navigator.id.logout", function (assert) {
+  mockNavigator.id.logout = sinon.mock(); // 为需要测试的 mockNavigator.id.logout 函数创建一个驭件
+  Superlists.Accounts.initialize(mockNavigator, user, token, urls);
+  var onloginCallback = mockNavigator.id.watch.firstCall.args[0].onlogin;
+  var server = sinon.fakeServer.create(); // 使用 Sinon 提供的 fakeServer。这是建立在 fakeXMLHttpRequest 之上的一个抽象对象，用来模拟 Ajax 服务器的响应
+  server.respondWith([403, {}, "permission denied"]); // 让虚拟服务器返回 403 "permission denied" 响应，以此模拟用户未授权时的状态
+
+  onloginCallback();
+  assert.equal(mockNavigator.id.logout.called, false, "should not logout yet");
+
+  server.respond(); // 然后，让虚拟服务器发送响应。因为只有响应发出后才会调用 logout 函数
+  assert.equal(mockNavigator.id.logout.called, true, "should call logout");
+});
+```
+
+根据这个测试，要稍微修改一下探究代码：
+
+```javascript
+// accounts/static/accounts.js
+navigator.id.watch({
+  loggedInUser: user,
+  onlogin: function (assertion) {
+    $.post(urls['login'], {assertion: assertion, csrfmiddlewaretoken: token}
+          ).fail(function () {
+      navigator.id.logout();
+    });
+  },
+  onlogout: function (assertion) {
+    $.post(urls["logout"]);
+  }
+});
+```
+
+最后，再添加 `window.location.reload` 。这么做只是为了确认它不会导致任何一个单元测试失败：
+
+```javascript
+// accounts/static/accounts.js
+navigator.id.watch({
+  loggedInUser: user,
+  onlogin: function (assertion) {
+    $.post(urls['login'], {assertion: assertion, csrfmiddlewaretoken: token}
+          ).fail(function () {
+      navigator.id.logout();
+    }).done(function () {
+      window.location.reload();
+    });
+  },
+  onlogout: function (assertion) {
+    $.post(urls["logout"]);
+  }
+});
+```
+
+一切仍然正常。如果觉得把 `.done` 和 `.fail` 放在一起不太合适，可以使用其他写法，比如：
+
+```javascript
+var deferred = $.post(
+  urls.login,
+  {assertion: assertion, csrfmiddlewaretoken: token}
+);
+
+deferred.done(function () {
+  window.location.reload();
+});
+deferred.fail(function () {
+  navigator.id.logout();
+});
+```
+
+这段异步代码，串在一起读可能好理解一些：向 urls.login 发起 POST 请求，并把判定数据和 CSRF 令牌传给这个视图，请求处理完成之后，重新加载页面，如果请求失败，执行 `navigator.id.logout` 函数。可以阅读这篇[文章](http://otaqui.com/blog/1637/introducing-javascript-promises-aka-futures-in-google-chrome-canary/)研究一下 JavaScript 中的 deferred 对象（也叫 "promise"）。
+
+接下来先调整一下对 `initialize` 函数的调用：
+
+```javascript
+// lists/templates/base.html
+/* global $, Superlists, navigator */
+$(document).ready(function () {
+  var user = "{{ user.email }}" || null;
+  var token = "{{ csrf_token }}";
+  var urls = {
+    login: "TODO",
+    logout: "TODO"
+  };
+  Superlists.Accounts.initialize(navigator, user, token, urls);
+});
+```
+
+然后运行功能测试，可以看到测试失败了，但看到弹出了 Persona 对话框，而且后面的操作也都完成了。
+
+> #### 关于在 JavaScript 中探究和使用模拟技术
+>
+> * 探究
+>   * 探索性编程，找到新 API 的用法，或者试验新解决方案的可行性。探究时可以不写测试。最好在新分支中探究，删除探究代码后再回到主分支。
+> * 模拟技术
+>   * 编写单元测试时，如果涉及第三方服务，但又不想在测试中真的使用这项服务，就可以使用模拟技术。驭件用来模拟第三方 API。虽然可以在 JavaScript 中自己创建驭件，但模拟框架（例如 Sinon）可以提供很多遍历，让编写测试变得更简单，更重要的是，测试读起来更顺口。
+> * Ajax 请求的单元测试
+>   * Sinon 能给予很大帮助。自动动手模拟 Ajax 请求真的很痛苦。
