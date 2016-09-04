@@ -448,5 +448,80 @@ if response.ok and response.json()["status"] == "okay":
 
 现在的测试结果为 OK。
 
+#### 16.3.4 需要时创建用户
 
+如果传入 authenticate 函数的判定数据经 Persona 确认有效，而且数据库中没有这个人的用户记录，应用应该创建一个新用户。相应的测试如下：
+
+```python
+# accounts/tests/test_authentication.py
+    def test_creates_new_user_if_necessary_for_valid_assertion(self, mock_post):
+        mock_post.return_value.json.return_value = {"status": "okay", "email": "a@b.com"}
+        found_user = self.backend.authenticate("an assertion")
+        new_user = User.objects.get(email="a@b.com")
+        self.assertEqual(found_user, new_user)
+```
+
+当应用的代码尝试使用电子邮件地址查找一个现有用户时，这个测试会失败。
+
+所以我们添加一个 try/except 语句，暂时返回一个没设定任何属性的用户：
+
+```python
+# accounts/authentication.py
+if response.ok and response.json()["status"] == "okay":
+    try:
+        return User.objects.get(email=response.json()["email"])
+    except User.DoesNotExist:
+        return User.objects.create()
+```
+
+测试仍然失败，但这一次发生在测试尝试使用电子邮件查找新用户时，所以修正的方法是给 email 属性指定正确的电子邮件地址：
+
+```python
+# accounts/authentication.py
+if response.ok and response.json()["status"] == "okay":
+    email = response.json()["email"]
+    try:
+        return User.objects.get(email=email)
+    except User.DoesNotExist:
+        return User.objects.create(email=email)
+```
+
+修改之后，测试能通过了。
+
+#### 16.3.5 `get_user` 方法
+
+接下来要为认证后台定义 `get_user` 方法。这个方法的作用是使用用户的电子邮件地址取回用户记录，如果找不到用户记录就返回 None。
+
+针对这两个要求的几个测试如下所示：
+
+```python
+# accounts/tests/test_authentication.py
+class GetUserTest(TestCase):
+    def test_gets_user_by_email(self):
+        backend = PersonaAuthenticationBackend()
+        other_user = User(email="other@user.com")
+        other_user.username = "otheruser"
+        other_user.save()
+        desired_user = User.objects.create(email="a@b.com")
+        found_user = backend.get_user("a@b.com")
+        self.assertEqual(found_user, desired_user)
+
+    def test_returns_none_if_no_user_with_that_email(self):
+        backend = PersonaAuthenticationBackend()
+        self.assertIsNone(
+        	backend.get_user("a@b.com")
+        )
+```
+
+一步一步编写代码，最终的代码如下所示：
+
+```python
+def get_user(self, email):
+    try:
+        return User.objects.get(email=email)
+    except User.DoesNotExist:
+        return None
+```
+
+现在第二个测试通过了。而且我们得到了一个可以使用的认证后台。下面我们可以编写自定义的用户模型了。
 
