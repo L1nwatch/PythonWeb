@@ -21,3 +21,4 @@
         * [第 14 章 部署新代码](PythonWeb开发: 测试驱动方法/第二部分 Web 开发要素/第 14 章 部署新代码/readme.md)
     * [第三部分 高级话题](PythonWeb开发: 测试驱动方法/第三部分 高级话题/readme.md)
         * [第 15 章 用户认证_集成第三方插件以及 JavaScript 模拟技术的使用](PythonWeb开发: 测试驱动方法/第三部分 高级话题/第 15 章 用户认证_集成第三方插件以及 JavaScript 模拟技术的使用/readme.md)
+        * [第 16 章 服务器端认证,在 Python 中使用模拟技术](PythonWeb开发: 测试驱动方法/第三部分 高级话题/第 16 章 服务器端认证,在 Python 中使用模拟技术/readme.md)
