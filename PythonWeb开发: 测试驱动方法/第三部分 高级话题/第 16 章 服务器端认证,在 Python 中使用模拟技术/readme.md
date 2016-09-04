@@ -716,3 +716,115 @@ git diff --staged
 git commit -am "Custom Persona auth backend + custom user model"
 ```
 
+### 16.6 完善功能测试，测试退出功能
+
+我们要扩展功能测试，确认网站能持久保持已登录状态，也就是说这并不是我们在客户端 JavaScript 代码中设定的状态，服务器也知道这个状态，而且刷新页面后会保持已登录状态。同时，我们还要测试用户能退出。
+
+先编写测试代码：
+
+```python
+# functional_tests/test_login.py
+# 刷新页面，她发现真的通过会话登录了
+# 而且并不只在那个页面中有效
+self.browser.refresh()
+self.wait_for_element_with_id("id_logout")
+navbar = self.browser.find_element_by_css_selector(".navbar")
+self.assertIn("edith@mockmyid.com", navbar.text)
+```
+
+我们重复编写了十分类似的代码，所以可以定义几个辅助函数：
+
+```python
+# functional_tests/test_login.py
+def wait_to_be_logged_in(self):
+    self.wait_for_element_with_id("id_logout")
+    navbar = self.browser.find_element_by_css_selector(".navbar")
+    self.assertIn("edith@mockmyid.com", navbar.text)
+    
+def wait_to_be_logged_out(self):
+    self.wait_for_element_with_id("id_login")
+    navbar = self.browser.find_element_by_css_selector(".navbar")
+    self.assertNotIn("edith@mockmyid.com", navbar.text)
+```
+
+然后，把功能扩展成这样：
+
+```python
+# functional_tests/test_login.py
+    def test_login_with_persona(self):
+        # Y 访问这个很棒的超级列表网站
+        # 第一次注意到 "Sign in" 链接
+        self.browser.get(self.server_url)
+        self.browser.find_element_by_id('id_login').click()
+
+        # 出现一个 Persona 登录框
+        # 需要辅助函数，它们都用于实现 Selenium 测试中十分常见的操作：等待某件事发生。
+        self.switch_to_new_window("Mozilla Persona")
+
+        # Y 使用她的电子邮件地址登录
+        ## 测试中的电子邮件使用 mockmyid.com
+        # 可以使用如下方法查找 Persona 电子邮件输入框的 ID：手动打开网站，使用 Firefox 调试工具条(`Ctrl + Shift + I`)
+        # 这里没有使用真实的电子邮件地址，而是用虚拟工具生成的地址，因此不用在邮件服务供应商的网站上填写认证信息。虚拟工具可以使用 MockMyID 或者 Persona Test User
+        self.browser.find_element_by_id("authentication_email").send_keys("edith@mockmyid.com")
+        self.browser.find_element_by_tag_name("button").click()
+
+        # Persona 窗口关闭
+        self.switch_to_new_window("To-Do")
+
+        # 她发现自己已经登录
+        # 需要辅助函数，它们都用于实现 Selenium 测试中十分常见的操作：等待某件事发生。
+        self.wait_to_be_logged_in()
+
+        # 刷新页面，她发现真的通过会话登录了
+        # 而且并不只在那个页面中有效
+        self.browser.refresh()
+        self.wait_to_be_logged_in()
+
+        # 对这项新功能有些恐惧，她立马点击了退出按钮
+        self.browser.find_element_by_id("id_logout").click()
+        self.wait_to_be_logged_out()
+
+        # 刷新后仍旧保持退出状态
+        self.browser.refresh()
+        self.wait_to_be_logged_out()
+```
+
+另外，改进 `wait_for_element_with_id` 函数中的失败消息有助于看清发生了什么：
+
+```python
+# functional_tests/test_login.py
+def wait_for_element_with_id(self, element_id):
+    WebDriverWait(self.browser, timeout=30).until(
+        lambda b: b.find_element_by_id(element_id), "Could not find element with id {}. Page text was {}"
+        .format(element_id, self.browser.find_element_by_tag_name("body").text))
+```
+
+这样修改之后，可以看到，测试失败的原因是退出按钮没起作用。
+
+实现退出功能的方法其实很简单，我们可以使用 Django 原生的退出[视图](http://djangoproject.com/en/1.7/topics/auth/default/#module-django.contrib.auth.views)。这个视图会清空用户的会话，然后重定向到我们指定的页面：
+
+```python
+# accounts/urls.py
+urlpatterns = patterns("",
+                      url(r"^login$","accounts.views.persona_login", name="persona_login"),
+                      url(r"^logout$","django.contrib.auth.views.logout", {"next_page": "/"},name="logout"),)
+```
+
+然后在 `base.html` 中，把退出按钮写成一个普通的 URL 链接：
+
+```html
+<a class="btn navbar-btn navbar-right" id="id_logout" href="{% url 'logout' %}">Log out</a>
+```
+
+现在，功能测试都能通过了。其实，整个测试组件都可以通过。
+
+> #### 在 Python 中使用模拟技术
+>
+> * Mock 库
+>   * Michael Foord 开发了很优秀的 Mock 库，现在这个库已经集成到 Python 3 的标准库中。这个库包含了在 Python 中使用模拟技术所需的几乎全部功能。
+> * patch 修饰器
+>   * `unittest.mock` 模块提供了一个函数叫做 patch，可用来模拟要测试的模块中任何一个对象。patch 一般用来修饰测试方法，不过也可以修饰测试类，然后应用到类中的所有测试方法上。
+> * 驭件是真值，可能会掩盖错误
+>   * 要知道，模拟的对象在 if 语句中的表现可能有违常规。驭件是真值，而且还能掩盖错误，因为驭件有所有的属性和方法。
+> * 驭件太多会让代码变味
+>   * 在测试中过多地使用驭件会导致测试和实现联系十分紧密。有时无法避免出现这种情况。但一般而言，你可以找到一种组织代码的方式，可以避免使用太多驭件。
