@@ -390,20 +390,29 @@ from django.contrib.auth import BACKEND_SESSION_KEY, SESSION_KEY, get_user_model
 from django.contrib.sessions.backends.db import SessionStore
 from django.core.management.base import BaseCommand
 
+__author__ = '__L1n__w@tch'
+
 User = get_user_model()
 
+
 class Command(BaseCommand):
-    def handle(self, email, *_, **__):
+    def add_arguments(self, parser):
+        parser.add_argument('email')
+
+    def handle(self, *args, **kwargs):
+        email = kwargs["email"]
         session_key = create_pre_authenticated_session(email)
         self.stdout.write(session_key)
 
+
 def create_pre_authenticated_session(email):
-    user = User.objects.create(email = email)
+    user = User.objects.create(email=email)
     session = SessionStore()
     session[SESSION_KEY] = user.pk
     session[BACKEND_SESSION_KEY] = settings.AUTHENTICATION_BACKENDS[0]
     session.save()
     return session.session_key
+
 ```
 
 `create_pre_authenticated_session` 函数的代码从 `test_my_lists.py` 文件中提取而来。handle 方法从命令行的第一个参数中获取电子邮件地址，返回一个将要存入浏览器 cookie 中的会话键。这个管理命令还会把会话期间打印到命令行中，试一下这个命令：
@@ -441,3 +450,133 @@ python3 manage.py create_session a@b.com # 自己测试失败了，提示说找�
 
 #### 17.3.2 让功能测试在服务器上运行管理命令
 
+接下来调整 `test_my_lists.py` 文件中的测试，让它在本地服务器中运行本地函数，但是在过渡服务器中运行管理命令：
+
+```python
+# functional_tests/test_my_lists.py
+from django.conf import settings
+from base import FunctionalTest
+from server_tools import create_session_on_server
+from management.commands.create_session import create_pre_authenticated_session
+
+class MyListsTest(FunctionalTest):
+    def create_pre_authenticated_session(self, email):
+        if self.against_staging:
+            session_key = create_session_on_server(self.server_host, email)
+        else:
+            session_key = create_pre_authenticated_session(email)
+		# 为了设定 cookie，我们要先访问网站
+        # 而 404 页面是加载最快的
+        self.browser.get(self.server_url + "/404_no_such_url/")
+        self.browser.add_cookie(dict(
+        	name=settings.SESSION_COOKIE_NAME,
+            value=session_key,
+            path="/",
+        ))
+```
+
+看一下如何判断是否运行在过渡服务器中。`self.against_staging` 的值在 `base.py` 中设定：
+
+```python
+# functional_tests/base.py
+from server_tools import reset_database
+
+class FunctionalTest(StaticLiveServerCase):
+    @classmethod
+    def setUpClass(cls):
+        for arg in sys.argv:
+            if "liveserver" in arg:
+                cls.server_host = arg.split("=")[1] # 如果检测到命令行参数中有 liveserver, 就不仅存储 cls.server_url 属性，还存储 server_host 和 against_staging 属性
+                cls.server_url = "http://" + cls.server_host
+                cls.against_staging = True
+                return
+		super().setUpClass()
+        cls.against_staging = False
+        cls.server_url = cls.live_server_url
+        
+	@classmethod
+    def tearDownClass(cls):
+        if not cls.against_staging:
+            super().tearDownClass()
+            
+	def setUp(self):
+        if self.against_staging:
+            reset_database(self.server_host) # 需要在两次测试之间还原服务器中数据库的方法
+        self.browser = webdriver.Firefox()
+        self.browser.implicitly_wait(3)
+```
+
+#### 17.3.3 使用 subprocess 模块完成额外的工作
+
+我们的测试使用 Python 3，不能直接调用 Fabric 函数，因为 Fabric 只能在 Python 2 中使用。所以要做些额外工作，像部署服务器时一样，在新进程中执行 fab 命令。要做的额外工作如下，代码写入 `server_tools` 模块中：
+
+```python
+# functional_tests/server_tools.py
+from os import path
+import subprocess
+THIS_FOLDER = path.abspath(path.dirname(__file__))
+SSH_PORT = 26832
+
+def create_session_on_server(host, email):
+    return subprocess.check_output(
+    	[
+          "fab",
+          "create_session_on_server:email={}".format(email), # 可以看出，在命令行中指定 fab 函数的参数使用的句法很简单，冒号后跟着 "变量=参数" 形式的写法
+          "--host={}:{}".format(host, SSH_PORT), # 自己的服务器使用 SSH_PORT 端口号
+          "--hide=everything,status", # 因为这些工作通过 Fabric 和子进程完成，而且在服务器中运行，所以从命令行的输出中提取字符串形式的会话键时一定要格外小心
+    	],
+        cwd = THIS_FOLDER
+    ).decode().strip()
+
+def reset_database(host):
+    subprocess.check_call(
+    	["fab", "reset_database", "--host={}:{}".format(host, SSH_PORT)],
+        cwd = THIS_FOLDER
+    )
+```
+
+这里使用 subprocess 模块通过 fab 命令调用几个 Fabric 函数。
+
+如果使用自定义的用户名或密码，需要修改调用 `subprocess` 那行代码，和运行自动化部署脚本时 fab 命令的参数保持一致。
+
+最后，看一下 `fabfile.py` 中定义的那两个在服务器端运行的命令。这两个命令的作用是还原数据库和设置会话：
+
+```python
+# functional_tests/fabfile.py
+from fabric.api import env, run
+
+def _get_base_folder(host):
+    return "~/sites/" + host
+
+def _get_manage_dot_py(host):
+    return "{path}/virtualenv/bin/python {path}/source/manage.py".format(path=_get_base_folder(host))
+
+def reset_database():
+    run("{manage_py} flush --noinput".format(
+    	manage_py=_get_manage_dot_py(env.host)
+    ))
+
+def create_session_on_server(email):
+    session_key = run("{manage_py} create_session {email}".format(manage_py=_get_manage_dot_py(env.host),email=email,))
+    print(session_key)
+```
+
+首先，在本地运行测试，确认没有造成任何破坏：`python3 manage.py test functional_tests.test_my_lists`。
+
+然后，在服务器中运行。先把代码推送到服务器中：
+
+```shell
+git push # 要先提交改动
+cd deploy_tools
+fab deploy --host=watch0.top:26832
+```
+
+再运行测试。注意，现在指定 `liveserver` 参数的值时可以包含 `elspeth@`：
+
+```shell
+python3 manage.py test functional_tests.test_my_lists --liveserver=elspeth@watch0.top
+```
+
+之后还可以运行全部测试确认一下。
+
+> 
