@@ -574,7 +574,7 @@ fab deploy --host=watch0.top:26832
 再运行测试。注意，现在指定 `liveserver` 参数的值时可以包含 `elspeth@`：
 
 ```shell
-python3 manage.py test functional_tests.test_my_lists --liveserver=elspeth@watch0.top
+python3 manage.py test functional_tests.test_my_lists --liveserver=watch@watch0.top
 ```
 
 之后还可以运行全部测试确认一下。
@@ -589,3 +589,117 @@ python3 manage.py test functional_tests.test_my_lists --liveserver=elspeth@watch
 >
 > 在生产环境的数据副本中运行测试也有同样的危险。
 
+### 17.4 集成日志相关的代码
+
+接下来要把日志相关的代码集成到应用中。把输出日志的代码放在那儿，并且纳入版本控制，有助于调试以后遇到的登陆问题。
+
+先把 `Gunicorn` 的配置保存到 `deploy_tools` 文件夹里的临时文件中。
+
+#### 使用可继承的日志配置
+
+前面调用 `logging.warning` 时，使用的是根日志记录器。一般来说，这么做并不好，因为第三方模块会干扰根日志记录器。一般的做法是使用以所在文件命名的日志记录器，使用下面的代码：
+
+`logger = logging.getLogger(__name__)`
+
+日志的配置可以继承，所以可以为顶层模块定义一个父日志记录器，让其中的所有 Python 模块都继承这个配置。
+
+在 `settings.py` 中为所有应用设置日志记录器的方式如下所示：
+
+```python
+# superlists/settings.py
+LOGGING = {
+  "version": 1,
+  "disable_existing_loggers": False,
+  "handlers": {
+    "console": {
+      "level": "DEBUG",
+      "class": "logging.StreamHandler",
+    },
+  } ,
+  "loggers": {
+    "django": {
+      "handlers": ["console"],
+    },
+    "accounts": {
+      "handlers": ["console"],
+    },
+    "lists": {
+      "handlers": ["console"],
+    },
+  },
+  "root": {"level": "INFO"}
+}
+```
+
+现在，`accounts.models`、`accounts.views` 和 `accounts.authentication` 等应用都从父日志记录器 accounts 中继承 `logging.StreamHandler`。
+
+不过，受限于 Django 的项目结构，无法为整个项目定义一个顶层日志记录器（除非使用根日志记录器），所以必须为每个应用定义各自的日志记录器。
+
+为日志行为编写测试的方法如下所示：
+
+```python
+# accounts/tests/test_authentication.py
+import logging
+[...]
+
+@patch("accounts.authentication.requests.post")
+class AuthenticateTest(TestCase):
+    [...]
+    
+    def test_logs_non_okay_responses_from_persona(self, mock_post):
+        response_json = {"status": "not okay", "reason": "eg, audience mismatch"}
+        mock_post.return_value_ok = True
+        mock_post.return_value.json.return_value = response_json  # 给测试提供一些数据，触发日志记录器
+
+        logger = logging.getLogger("accounts.authentication")  # 获取正在测试的这个模块的日志记录器
+        # 使用 patch.object 临时模块这个日志记录器的 warning 函数。使用 with 的目的是把这个驭件作为测试目标函数的上下文管理器
+        with patch.object(logger, "warning") as mock_log_warning:
+            self.backend.authenticate("an assertion")
+
+        # 然后可以使用这个驭件声明断言
+        mock_log_warning.assert_called_once_with("Persona says no. Json was: {}".format(response_json))
+```
+
+可以测试一下，确保测试了我们想测试的行为：
+
+```python
+# accounts/authenticaion.py
+import logging
+logger = logging.getLogger(__name__)
+[...]
+	if response.ok and response.json["status"] == "okay":
+        [...]
+    else:
+        logger.warning("foo")
+```
+
+然后使用真正的实现方式：
+
+```python
+# accounts/authentication.py
+else:
+    logger.warning(
+    	"Persona says no. Json was: {}".format(response.json())
+    )
+```
+
+进行测试，可以看到成功了。
+
+### 17.5 小结
+
+至此，已经让测试固件既可以在本地使用也能在服务器中使用，还设定了更牢靠的日志配置。
+
+> #### 固件和日志
+>
+> * 谨慎去除功能测试中的重复
+>   * 每个功能测试没必要都测试应用的全部功能。在功能测试中还可能需要跳过一些过程。但是，要提醒一下，功能测试的目的是为了捕获应用不同部分之间交互时的异常表现，所去除重复时不要太过火了。
+> * 测试固件
+>   * 测试固件指运行测试之前要提前准备好的测试数据。一般使用一些数据填充数据库，不过如前所示（创建浏览器的 cookie），也会涉及到其他准备工作。
+> * 避免使用 JSON 固件
+>   * Django 提供的 dumpdata 和 loaddata 等命令，简化了把数据库中的数据导出为 JSON 格式的操作，也可以轻易的使用 JSON 格式数据还原数据库。大多数人都不建议使用这种固件，因为数据库模式发生变化后这种固件很难维护。所以建议使用 ORM，或者 [`factory_boy`](https://factoryboy.readthedocs.org/)这类工具。
+> * 固件也要在远程服务器中使用
+>   * 在本地运行测试，使用 `LiveServerTestCase` 即可轻松通过 `Django ORM` 与测试数据库交互。与过渡服务器中的数据库交互就没这么简单了。解决办法之一是使用 Django 管理命令。
+> * 使用以所在模块命名的日志记录器
+>   * 根日志记录器是一个全局对象，Python 进程中加载的所有库都能访问，所以这个日志记录器不完全在你的控制之中。因此，要使用 `logging.getLogger(__name__)` 获取一个相对模块唯一的记录器，而且这个记录器继承自设定的顶层配置。
+> * 测试重要的日志消息
+>   * 日志消息对于调试生产环境中的问题十分重要。如果某个日志消息很重要，必须保留在代码中，或许也有必要测试。根据经验，比 `logging.INFO` 等级高的日志消息都要测试。在测试目标模块所用的日志记录器上使用 `patch.object`，有助于简化日志消息的单元测试。
