@@ -23,4 +23,4 @@
         * [第 15 章 用户认证_集成第三方插件以及 JavaScript 模拟技术的使用](PythonWeb开发: 测试驱动方法/第三部分 高级话题/第 15 章 用户认证_集成第三方插件以及 JavaScript 模拟技术的使用/readme.md)
         * [第 16 章 服务器端认证,在 Python 中使用模拟技术](PythonWeb开发: 测试驱动方法/第三部分 高级话题/第 16 章 服务器端认证,在 Python 中使用模拟技术/readme.md)
         * [第 17 章 测试固件,日志和服务器端调试](PythonWeb开发: 测试驱动方法/第三部分 高级话题/第 17 章 测试固件,日志和服务器端调试/readme.md)
-        * [第 18 章 完成"My Lists"页面:由外而内的TDD](PythonWeb开发: 测试驱动方法/第三部分 高级话题/第 18 章 完成"My Lists"页面:由外而内的TDD/readme.md)
+        * [第 18 章 完成My Lists页面:由外而内的TDD](PythonWeb开发: 测试驱动方法/第三部分 高级话题/第 18 章 完成My Lists页面:由外而内的TDD/readme.md)
