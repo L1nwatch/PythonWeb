@@ -7,5 +7,5 @@
 * 笔记查看[GitBook 对应章节](https://l1nwatch.gitbooks.io/pythonweb/content/)
 * 第一部分至第 6 章结束
 * 第二部分至第 14 章结束
-* 第三部分至第 19 章结束
+* 第三部分至第 20 章结束
 
