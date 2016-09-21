@@ -358,22 +358,145 @@ git commit -m "Create Page objects for Home and List pages, use in sharing FT"
 5. 可以再编写一个单元测试，在测试中创建一个用户和一个清单，在 POST 请求中发送电子邮件地址，然后检查 `list_.shared_with.all()` （类似于 "My Lists" 页面使用的那个 ORM 用法）中是否包含这个用户。`shared_with` 属性还不存在，我们使用的是由外而内的方式
 
    ```python
-   # 
+   # lists/tests/test_views.py
+   def test_post_share_email_correct(self):
+       user = User.objects.create(email="test@email.com")
+       list1 = List.objects.create()
+       response = self.client.post("/lists/{}/share".format(list1.id), data={"email": user.email})
+       self.assertIn(user, list1.shared_with.all())
    ```
 
 6. 所以在这个测试通过之前，要下移到模型层。下一个测试要写入 `test_models.py` 中。在这个测试中，可以检查清单能否响应 `shared_with.add` 方法。这个方法的参数是用户的电子邮件地址。然后检查清单的 `shared_with.all()` 查询集合中是否包含这个用户。
 
-7. 然后需要用到 `MantToManyField`。或许你会看到一个错误消息，提示 `related_name` 有冲突，查阅 Django 的文档之后你会找到解决办法。
+   ```python
+   # lists/tests/test_models.py
+   def test_shared_wtih_add_and_all(self):
+       # 检查清单能否响应 shared_with.add 方法
+       list1 = List.objects.create()
+       test_email = "test@email.com"
+       user = User.objects.create(email=test_email)
+       list1.shared_with.add(test_email)
+       list_in_db = List.objects.get(id=list1.id)
+       self.assertIn(user, list_in_db.shared_with.all())
+   ```
+
+7. 然后需要用到 `ManyToManyField`。或许你会看到一个错误消息，提示 `related_name` 有冲突，查阅 Django 的文档之后你会找到解决办法。
+
+   ```python
+   # lists/models.py
+   class List(models.Model):
+       owner = models.ForeignKey(settings.AUTH_USER_MODEL, blank=True, null=True)
+       shared_with = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name="lists_want_to_share")
+       [...]
+   ```
 
 8. 需要执行一次数据库迁移
 
+   ```shell
+   python3 manage.py makemigrations
+   python3 manage.py migrate
+   ```
+
 9. 然后，模型测试应该可以通过。回过头来修正视图测试
+
+   ```python
+   python3 manage.py test lists
+   ```
 
 10. 可能会发现重定向视图的测试失败，因为视图发送的 POST 请求无效。可以选择忽略无效的输入，也可以调整测试，发送有效的 POST 请求。
 
-11. 然后回到模板层。"My Lists" 页面需要一个 `<ul>` 元素，使用 for 循环列出分享给这个用户的清单。还想在清单页面显示这个清单分享给谁了，并注明这个清单的属主是谁。各元素的类和 ID 参加功能测试。如果需要，还可以为这几个需求编写简单的单元测试。
+```python
+   # lists/views.py
+   def share_list(request, list_id):
+       list_ = List.objects.get(id=list_id)
+       list_.shared_with.add(request.POST["email"])
+       return redirect(list_)
+```
 
-12. 执行 runserver 命令让网站运行起来，或许能帮助你解决问题，以及调整布局和外观。如果使用隐私浏览器会话，可以同时登陆多个用户。
+111. 然后回到模板层。"My Lists" 页面需要一个 `<ul>` 元素，使用 for 循环列出分享给这个用户的清单。还想在清单页面显示这个清单分享给谁了，并注明这个清单的属主是谁。各元素的类和 ID 参加功能测试。如果需要，还可以为这几个需求编写简单的单元测试。
+
+```python
+# lists/templates/list.html
+{% block extra_content %}
+<div class="row">
+<div class="col-md-6">
+<h3>Shared with</h3>
+{% for has_shared in list_attr.shared_with.all %}
+<li class="list-shared">{{ has_shared.email }}</li>
+{% endfor %}
+</div>
+
+
+<div class="col-md-4 col-md-offset-1">
+<h3>Share this list:</h3>
+    <form class="form-inline" method="POST" action="{% url 'share_list' list_attr.id %}">
+    {% csrf_token %}
+    <input name="email" placeholder="your-friend@example.com"/>
+    </form>
+    </div>
+    </div>
+{% endblock %}
+```
+
+```python
+# functional_tests/home_and_list_pages.py
+def get_shared_with_list(self):
+    return self.test.browser.find_elements_by_css_selector(".list-shared") # 注意是 find_elements 而不是 find_element
+```
+
+```python
+# lists/templates/my_lists.html
+{% block extra_content %}
+<h2>
+{#        <!-- 需要一个名为 owner 的变量，在模板中表示用户 -->#}
+    {{ owner.email }}'s lists
+    </h2>
+    <ul>
+    {#        <!-- 想使用 owner.list_set.all 遍历用户创建的清单(ORM 提供了这个属性) -->#}
+        {% for list_attr in owner.list_set.all %}
+        {#            <!-- 想使用 list.name 获取清单的名字，目前清单以其中的第一个待办事项命名 -->#}
+            <li><a href="{{ list_attr.get_absolute_url }}">{{ list_attr.name }}</a></li>
+
+            {% endfor %}
+            </ul>
+            <ul>
+            {% for list_attr in owner.lists_want_to_share.all %}
+            <li>
+            <a href="{{ list_attr.get_absolute_url }}">{{ list_attr.name }}</a>
+            ({{ list_attr.owner.email }})
+            </li>
+            {% endfor %}
+            </ul>
+            {% endblock %}
+```
+
+```python
+# functional_tests/test_sharing.py
+# 在清单页面，Oniciferous 看到这个清单属于 Y
+self.wait_for(lambda: self.assertEqual(
+    list_page.get_list_owner(), # 注意这里之前打成 get_list.owner() 了
+    'edith@example.com'
+))
+```
+
+```python
+# lists/templates/list.html
+{% block table %}
+    <table id="id_list_table" class="table">
+        {% for item in list_attr.item_set.all %}
+            <tr>
+                <td>{{ forloop.counter }}: {{ item.text }}</td>
+            </tr>
+        {% endfor %}
+    </table>
+
+    {% if list_attr.owner %}
+        <p>List owner: <span id="id_list_owner">{{ list_attr.owner.email }}</span><p>
+    {% endif %}
+{% endblock %}
+```
+
+122. 执行 runserver 命令让网站运行起来，或许能帮助你解决问题，以及调整布局和外观。如果使用隐私浏览器会话，可以同时登陆多个用户。
 
 > #### 页面模式以及真正留给读者的练习
 >
