@@ -300,7 +300,7 @@ git commit -m "Create Page objects for Home and List pages, use in sharing FT"
    {% block extra_content %}
        <div class="col-md-4 col-md-offset-1">
            <h3>Share this list:</h3>
-           <form class="form-inline" method="POST" action="{%url'share_list'%}">
+           <form class="form-inline" method="POST" action="\{\%url 'share_list' \%\}">
                {% csrf_token %}
                <input name="email" placeholder="your-friend@example.com"/>
            </form>
