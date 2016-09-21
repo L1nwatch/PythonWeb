@@ -326,25 +326,25 @@ git commit -m "Create Page objects for Home and List pages, use in sharing FT"
 
 3. 然后，编写第一个单元测试，驱动我们定义占位视图。我们希望这个视图处理 POST 请求，响应是重定向，指向清单页面，所以这个测试可以命名为 `ShareListTest.test_post_redirects_to_lists_page`
 
-   ```python
-   # list.html
-   {% block extra_content %}
-       <div class="col-md-4 col-md-offset-1">
-           <h3>Share this list:</h3>
-           <form class="form-inline" method="POST"> action="{% url 'share_list' list_attr.id%}">
-               {% csrf_token %}
-               <input name="email" placeholder="your-friend@example.com"/>
-           </form>
-       </div>
-   {% endblock %}
+```html
+# list.html
+{% block extra_content %}
+   <div class="col-md-4 col-md-offset-1">
+       <h3>Share this list:</h3>
+       <form class="form-inline" method="POST"> action="{% url 'share_list' list_attr.id%}">
+           {% csrf_token %}
+           <input name="email" placeholder="your-friend@example.com"/>
+       </form>
+   </div>
+{% endblock %}
 
-   # test_views.py
-   class ShareListTest(TestCase):
-       def test_post_redirects_to_lists_page(self):
-           list1 = List.objects.create()
-           response = self.client.post("/lists/{}/share".format(list1.id), data={"email": "test2@email.com"})
-           self.assertRedirects(response, list1.get_absolute_url())
-   ```
+# test_views.py
+class ShareListTest(TestCase):
+   def test_post_redirects_to_lists_page(self):
+       list1 = List.objects.create()
+       response = self.client.post("/lists/{}/share".format(list1.id), data={"email": "test2@email.com"})
+       self.assertRedirects(response, list1.get_absolute_url())
+```
 
 4. 编写占位视图，只需两行代码，一行用于查找清单，一行用于重定向
 
