@@ -29,4 +29,7 @@
         * [第 21 章 简单的社会化功能,页面模式,以及练习](PythonWeb开发: 测试驱动方法/第三部分 高级话题/第 21 章 简单的社会化功能,页面模式,以及练习/readme.md)
         * [第 22 章 测试运行速度的快慢和炽热的岩浆](PythonWeb开发: 测试驱动方法/第三部分 高级话题/第 22 章 测试运行速度的快慢和炽热的岩浆/readme.md)
     * [附录](PythonWeb开发: 测试驱动方法/附录/readme.md)
-        * [附录 A](PythonWeb开发: 测试驱动方法/附录/附录 A/readme.md)
+        * [附录 A PythonAnywhere](PythonWeb开发: 测试驱动方法/附录/附录 A/readme.md)
+        * [附录 B 基于类的 Django 视图](PythonWeb开发: 测试驱动方法/附录/附录 B/readme.md)
+        * [附录 C 使用 Ansible 配置服务器](PythonWeb开发: 测试驱动方法/附录/附录 C 使用 Ansible 配置服务器/readme.md)
+        * [附录 D 测试数据库迁移](PythonWeb开发: 测试驱动方法/附录/附录 D 测试数据库迁移/readme.md)
